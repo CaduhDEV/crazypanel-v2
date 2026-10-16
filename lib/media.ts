@@ -1,0 +1,69 @@
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { MessageKind } from "@/lib/types";
+
+// Somente servidor. Mídias ficam no bucket privado `whatsapp-media` e são
+// servidas por /api/media/:id (confere a sessão e redireciona para URL assinada).
+
+export const MEDIA_BUCKET = "whatsapp-media";
+export const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
+
+const EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "audio/mpeg": "mp3",
+  "audio/ogg": "ogg",
+  "audio/webm": "webm",
+  "audio/mp4": "m4a",
+  "application/pdf": "pdf",
+};
+
+export function extensionFor(mime: string | null, fileName?: string | null): string {
+  const fromName = fileName?.includes(".") ? fileName.split(".").pop()?.toLowerCase() : null;
+  if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
+  const base = (mime ?? "").split(";")[0].trim().toLowerCase();
+  return EXT_BY_MIME[base] ?? base.split("/")[1]?.replace(/[^a-z0-9]/g, "").slice(0, 8) ?? "bin";
+}
+
+/** Caminho no bucket: in|out/AAAA/MM/<id>.<ext>. */
+export function mediaPath(direction: "in" | "out", id: string, mime: string | null, fileName?: string | null): string {
+  const now = new Date();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${direction}/${now.getUTCFullYear()}/${month}/${id}.${extensionFor(mime, fileName)}`;
+}
+
+/** Baixa um arquivo público (ex.: fileURL da uazapi, que expira em 2 dias) e guarda no bucket. */
+export async function copyRemoteToStorage(url: string, path: string, mime: string | null): Promise<{ size: number; mime: string }> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(90_000), cache: "no-store" });
+  if (!res.ok) throw new Error(`download da mídia falhou (${res.status})`);
+  const length = Number(res.headers.get("content-length") ?? 0);
+  if (length > MAX_MEDIA_BYTES) throw new Error("mídia maior que o limite de 100 MB");
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const contentType = mime ?? res.headers.get("content-type") ?? "application/octet-stream";
+  const { error } = await createAdminClient()
+    .storage.from(MEDIA_BUCKET)
+    .upload(path, buffer, { contentType, upsert: true });
+  if (error) throw new Error(`upload no Storage falhou: ${error.message}`);
+  return { size: buffer.length, mime: contentType };
+}
+
+export async function signedMediaUrl(path: string, expiresIn: number, downloadName?: string): Promise<string> {
+  const { data, error } = await createAdminClient()
+    .storage.from(MEDIA_BUCKET)
+    .createSignedUrl(path, expiresIn, downloadName ? { download: downloadName } : undefined);
+  if (error || !data) throw new Error(`não foi possível assinar a mídia: ${error?.message}`);
+  return data.signedUrl;
+}
+
+/** Tipo de mensagem a partir do mime de um arquivo enviado pelo atendente. */
+export function kindFromMime(mime: string): MessageKind {
+  const m = mime.toLowerCase();
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
+  return "document";
+}
