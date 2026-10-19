@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { safeEqual } from "@/lib/crypto";
 import { loadVerification, VerifyError, type Verification } from "@/lib/verify/core";
-import { confirmEmail, resendEmail, startEmail } from "@/lib/verify/email";
+import { confirmEmail, emailCodeLength, resendEmail, startEmail } from "@/lib/verify/email";
 import { confirmPhone, resendPhone, startPhone } from "@/lib/verify/phone";
 import { completeVerification } from "@/lib/verify/complete";
 
@@ -48,6 +48,7 @@ function stage(v: Verification) {
     email: v.email,
     phone: v.phone,
     lockedUntil: v.locked_until && Date.parse(v.locked_until) > Date.now() ? v.locked_until : null,
+    codeLength: emailCodeLength(),
   };
 }
 

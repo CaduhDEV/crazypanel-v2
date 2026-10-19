@@ -18,6 +18,12 @@ import {
 // criado pela service role (app_metadata.kind = "lead", sem perfil de atendente)
 // e recebe o código de 6 dígitos do template "Magic Link" ({{ .Token }}).
 
+/** Tamanho do código do e-mail: igual ao "Email OTP length" do Supabase Auth (Authentication → Providers → Email). */
+export function emailCodeLength(): number {
+  const n = Number(process.env.EMAIL_OTP_LENGTH ?? 8);
+  return Number.isInteger(n) && n >= 6 && n <= 10 ? n : 8;
+}
+
 /** Cliente público, sem guardar sessão: só para pedir e conferir o código. */
 function authClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
@@ -68,6 +74,28 @@ export async function startEmail(db: Admin, input: { name: unknown; email: unkno
     throw new VerifyError("rate_limited", "Muitos códigos enviados para esse e-mail. Tente de novo em 1 hora.", 429, 3600);
   }
 
+  // Clicou de novo (ou voltou e reenviou) logo depois: o código já está a caminho.
+  // Reaproveita a verificação em vez de pedir outro e-mail (o Supabase recusa em < 60 s).
+  const { data: recent } = await db
+    .from("lead_verifications")
+    .select("id, email_sent_at, locked_until")
+    .ilike("email", email)
+    .eq("status", "email_pending")
+    .is("email_verified_at", null)
+    .gte("email_sent_at", new Date(Date.now() - LIMITS.resendCooldownMs).toISOString())
+    .order("email_sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (recent) {
+    if (recent.locked_until && Date.parse(recent.locked_until as string) > Date.now()) {
+      throw new VerifyError("locked", lockedMessage(), 429, Math.ceil((Date.parse(recent.locked_until as string) - Date.now()) / 1000));
+    }
+    const token = newToken();
+    await db.from("lead_verifications").update({ secret_hash: sha256(token), name }).eq("id", recent.id);
+    const waited = Date.now() - Date.parse(recent.email_sent_at as string);
+    return { id: recent.id as string, token, email, codeLength: emailCodeLength(), resendInSeconds: Math.ceil((LIMITS.resendCooldownMs - waited) / 1000) };
+  }
+
   const authUserId = await ensureAuthUser(db, email, name);
   await sendEmailCode(email);
 
@@ -87,7 +115,7 @@ export async function startEmail(db: Admin, input: { name: unknown; email: unkno
     .select("id")
     .single();
   if (error || !data) throw new VerifyError("email_failed", "Não foi possível iniciar a verificação. Tente de novo.", 500);
-  return { id: data.id as string, token, email };
+  return { id: data.id as string, token, email, codeLength: emailCodeLength(), resendInSeconds: Math.ceil(LIMITS.resendCooldownMs / 1000) };
 }
 
 export async function resendEmail(db: Admin, v: Verification) {
@@ -104,7 +132,7 @@ export async function confirmEmail(db: Admin, v: Verification, code: unknown) {
   assertNotLocked(v);
   if (v.email_verified_at) return { ok: true };
   const token = String(code ?? "").replace(/\D/g, "");
-  if (token.length !== 6) throw new VerifyError("invalid_code", "Digite os 6 números do código.");
+  if (token.length !== emailCodeLength()) throw new VerifyError("invalid_code", `Digite os ${emailCodeLength()} números do código.`);
 
   const { error } = await authClient().auth.verifyOtp({ email: v.email, token, type: "email" });
   if (error) {
