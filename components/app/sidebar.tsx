@@ -56,7 +56,7 @@ const SECTIONS: NavSection[] = [
       { href: "/empresas", label: "Empresas", icon: Building2 },
       { href: "/convites", label: "Prospectos", icon: UserPlus },
       { href: "/historico", label: "Histórico", icon: History },
-      { href: "/metricas", label: "Métricas", icon: BarChart3, soon: true },
+      { href: "/metricas", label: "Métricas", icon: BarChart3 },
     ],
   },
   {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,10 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/misc";
 import { PushSettings } from "@/components/admin/push-settings";
+import { ReportSettings, whatsappInput, type IssuedReportRow, type ReportPerson } from "@/components/admin/report-settings";
 
-export function SettingsForm({ settings }: { settings: AppSettings }) {
+export function SettingsForm({ settings, people, reports }: { settings: AppSettings; people: ReportPerson[]; reports: IssuedReportRow[] }) {
   const router = useRouter();
-  const [form, setForm] = useState({
+  const initial = useMemo(() => ({
     slaMinutes: Math.round(settings.sla_seconds / 60),
     warningPercent: settings.sla_warning_percent,
     signMessages: settings.sign_messages,
@@ -30,7 +31,19 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
     joinMsgNoCompany: settings.join_msg_no_company,
     joinMsgRejected: settings.join_msg_rejected,
     joinMsgAccepted: settings.join_msg_accepted,
-  });
+    memberReplyWindowMinutes: settings.member_reply_window_minutes,
+    reportEnabled: settings.report_enabled,
+    reportWeekday: settings.report_weekday,
+    reportHour: settings.report_hour,
+    reportPeriodDays: settings.report_period_days,
+    reportRecipients: Object.fromEntries(
+      people.map((p) => [p.id, { on: settings.report_recipients.includes(p.id), whatsapp: whatsappInput(p.whatsapp) }]),
+    ) as Record<string, { on: boolean; whatsapp: string }>,
+  }), [settings, people]);
+  const [form, setForm] = useState(initial);
+  const reportDirty =
+    JSON.stringify([initial.reportEnabled, initial.reportWeekday, initial.reportHour, initial.reportPeriodDays, initial.reportRecipients]) !==
+    JSON.stringify([form.reportEnabled, form.reportWeekday, form.reportHour, form.reportPeriodDays, form.reportRecipients]);
   const [pending, start] = useTransition();
 
   const num = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -39,7 +52,10 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     start(async () => {
-      const res = await updateSettings(form);
+      const res = await updateSettings({
+        ...form,
+        reportRecipients: Object.entries(form.reportRecipients).map(([id, r]) => ({ id, enabled: r.on, whatsapp: r.whatsapp })),
+      });
       if (!res.ok) return void toast.error(res.error);
       toast.success("Configurações salvas. Os atendentes veem as novas regras ao recarregar a página.");
       router.refresh();
@@ -99,6 +115,13 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
           >
             <Input id="burst" type="number" min={0} max={3600} step={30} value={form.burstWindowSeconds} onChange={num("burstWindowSeconds")} className="w-32" />
           </Field>
+          <Field
+            id="member-reply"
+            label="Resposta de membro sem citação (minutos)"
+            hint="Quem escreve logo depois da dúvida de outra pessoa, sem citar, aparece como possível resposta nessa dúvida. 0 desliga."
+          >
+            <Input id="member-reply" type="number" min={0} max={240} value={form.memberReplyWindowMinutes} onChange={num("memberReplyWindowMinutes")} className="w-32" />
+          </Field>
         </Group>
 
         <PushSettings value={form} onChange={(patch) => setForm({ ...form, ...patch })} />
@@ -117,6 +140,8 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
             <JoinMessage id="msg-accepted" label="Pedido aceito" hint="Ao entrar no grupo; {grupo} vira o nome dele." value={form.joinMsgAccepted} onChange={(v) => setForm({ ...form, joinMsgAccepted: v })} />
           </div>
         </section>
+
+        <ReportSettings value={form} onChange={(patch) => setForm({ ...form, ...patch })} people={people} reports={reports} dirty={reportDirty} />
 
         <div className="flex justify-end lg:col-span-2">
           <Button type="submit" disabled={pending}>

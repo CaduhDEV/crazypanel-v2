@@ -9,8 +9,8 @@ import { TRACK_SOURCE, UazapiError, type UazMediaType, type UazMessage } from "@
 import { getSettings } from "@/lib/settings";
 import { kindFromMime, MAX_MEDIA_BYTES, MEDIA_BUCKET, mediaPath, signedMediaUrl } from "@/lib/media";
 import { storeIncomingMedia } from "@/lib/webhook/process";
-import type { Message, Profile, TicketCategory } from "@/lib/types";
-import { TICKET_CATEGORIES, VOICE_NOTE_PREFIX } from "@/lib/types";
+import type { Message, Profile, ResolvedBy, TicketCategory, TicketTopic } from "@/lib/types";
+import { RESOLVED_BY, SUPPORT_CATEGORIES, TICKET_CATEGORIES, TICKET_TOPICS, VOICE_NOTE_PREFIX } from "@/lib/types";
 
 const id = z.uuid({ error: "Identificador inválido." });
 
@@ -384,20 +384,30 @@ export async function claimNextTicket(): Promise<ActionResult<string | null>> {
 
 const categoryValues = TICKET_CATEGORIES.map((c) => c.value) as [TicketCategory, ...TicketCategory[]];
 
+const topicValues = TICKET_TOPICS.map((t) => t.value) as [TicketTopic, ...TicketTopic[]];
+const resolvedByValues = RESOLVED_BY.map((r) => r.value) as [ResolvedBy, ...ResolvedBy[]];
+
 const closeSchema = z
   .object({
     ticketId: id,
     reason: z.enum(["resolved", "parallel"]),
-    category: z.enum(categoryValues).optional(),
+    category: z.enum(categoryValues, { error: "Escolha a categoria do atendimento." }),
+    topic: z.enum(topicValues).optional(),
+    resolvedBy: z.enum(resolvedByValues).optional(),
+    resolutionMessageId: id.optional(),
     note: z.string().trim().max(2000).optional(),
   })
-  .refine((d) => d.reason !== "resolved" || !!d.category, {
-    error: "Escolha a categoria do atendimento.",
-    path: ["category"],
+  .refine((d) => !SUPPORT_CATEGORIES.includes(d.category) || !!d.topic, {
+    error: "Escolha o assunto (subtema) do atendimento.",
+    path: ["topic"],
+  })
+  .refine((d) => d.reason !== "resolved" || !!d.resolvedBy, {
+    error: "Diga quem resolveu: comunidade, equipe ou os dois.",
+    path: ["resolvedBy"],
   });
 
 export async function closeTicket(input: z.input<typeof closeSchema>): Promise<ActionResult<void>> {
-  return runAction(closeSchema, input, async ({ ticketId, reason, category, note }) => {
+  return runAction(closeSchema, input, async ({ ticketId, reason, category, topic, resolvedBy, resolutionMessageId, note }) => {
     const profile = await requireMember();
     const ticket = await loadTicket(ticketId);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
@@ -410,7 +420,10 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
         closed_at: new Date().toISOString(),
         closed_by: profile.id,
         close_reason: reason,
-        category: category ?? null,
+        category,
+        topic: SUPPORT_CATEGORIES.includes(category) ? (topic ?? null) : null,
+        resolved_by: reason === "resolved" ? (resolvedBy ?? null) : null,
+        resolution_message_id: reason === "resolved" ? (resolutionMessageId ?? null) : null,
         close_note: note || null,
         waiting_since: null,
         assignee_id: ticket.assignee_id ?? profile.id,
@@ -420,7 +433,7 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
       ticket_id: ticketId,
       type: "closed",
       actor_id: profile.id,
-      data: { reason, category: category ?? null },
+      data: { reason, category, topic: topic ?? null, resolved_by: resolvedBy ?? null },
     });
   });
 }

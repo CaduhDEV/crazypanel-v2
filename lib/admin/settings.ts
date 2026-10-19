@@ -23,11 +23,31 @@ const settingsSchema = z.object({
   joinMsgRejected: z.string().trim().min(1, { error: "Informe a mensagem de recusa." }).max(1000),
   joinMsgAccepted: z.string().trim().min(1, { error: "Informe a mensagem de boas-vindas." }).max(1000),
   pushBreachBody: z.string().trim().min(1, { error: "Informe o texto do aviso de SLA estourado." }).max(300),
+  memberReplyWindowMinutes: z.number().int().min(0).max(240),
+  reportEnabled: z.boolean(),
+  reportWeekday: z.number().int().min(0).max(6),
+  reportHour: z.number().int().min(0).max(23),
+  reportPeriodDays: z.number().int().min(1).max(90),
+  reportRecipients: z.array(z.object({ id: z.uuid(), enabled: z.boolean(), whatsapp: z.string().max(40) })).max(200),
 });
+
+/** WhatsApp com DDI: 11 98765-4321 vira 5511987654321. */
+function normalizeWhatsapp(raw: string): string | null {
+  const d = raw.replace(/\D/g, "");
+  if (!d) return null;
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  return d.length >= 12 && d.length <= 15 ? d : null;
+}
 
 export async function updateSettings(input: z.input<typeof settingsSchema>): Promise<ActionResult<void>> {
   return runAction(settingsSchema, input, async (s) => {
     const admin = await requireAdmin();
+    const recipients = s.reportRecipients.map((r) => ({ ...r, phone: normalizeWhatsapp(r.whatsapp) }));
+    const invalid = recipients.find((r) => r.whatsapp.trim() && !r.phone);
+    if (invalid) throw new ActionError(`Confira o WhatsApp "${invalid.whatsapp}" (DDD + número).`);
+    const missing = recipients.filter((r) => r.enabled && !r.phone);
+    if (missing.length) throw new ActionError("Informe o WhatsApp de todos os atendentes que recebem o relatório.");
+    if (s.reportEnabled && !recipients.some((r) => r.enabled)) throw new ActionError("Escolha ao menos um atendente para receber o relatório.");
     const { error } = await createAdminClient()
       .from("app_settings")
       .update({
@@ -47,12 +67,23 @@ export async function updateSettings(input: z.input<typeof settingsSchema>): Pro
         join_msg_no_company: s.joinMsgNoCompany,
         join_msg_rejected: s.joinMsgRejected,
         join_msg_accepted: s.joinMsgAccepted,
+        member_reply_window_minutes: s.memberReplyWindowMinutes,
+        report_enabled: s.reportEnabled,
+        report_weekday: s.reportWeekday,
+        report_hour: s.reportHour,
+        report_period_days: s.reportPeriodDays,
+        report_recipients: recipients.filter((r) => r.enabled).map((r) => r.id),
         updated_by: admin.id,
       })
       .eq("id", 1);
     if (error) {
-      if (/push_|burst_|join_msg_/.test(error.message)) throw new ActionError("Rode as migrations novas (npx supabase db push) antes de salvar.");
+      if (/push_|burst_|join_msg_|report_|member_reply/.test(error.message)) throw new ActionError("Rode as migrations novas (npx supabase db push) antes de salvar.");
       throw error;
+    }
+    const db = createAdminClient();
+    for (const r of recipients) {
+      const { error: pe } = await db.from("profiles").update({ whatsapp: r.phone }).eq("id", r.id);
+      if (pe) throw new ActionError(`Não foi possível salvar o WhatsApp: ${pe.message}`);
     }
     revalidatePath("/", "layout");
   });

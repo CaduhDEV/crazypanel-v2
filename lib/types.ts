@@ -49,6 +49,16 @@ export interface AppSettings {
   join_msg_no_company: string;
   join_msg_rejected: string;
   join_msg_accepted: string;
+  /** Resposta de membro sem citação vira sugestão na dúvida com atividade nesse intervalo. */
+  member_reply_window_minutes: number;
+  // Relatório oficial pelo WhatsApp
+  report_enabled: boolean;
+  /** 0 = domingo … 6 = sábado (horário de Brasília). */
+  report_weekday: number;
+  report_hour: number;
+  report_period_days: number;
+  report_recipients: string[];
+  report_last_sent_at: string | null;
 }
 
 export interface WaGroup {
@@ -120,6 +130,11 @@ export interface Ticket {
   first_response_at: string | null;
   message_count: number;
   category: TicketCategory | null;
+  /** Assunto do produto (obrigatório nas categorias de suporte). */
+  topic?: TicketTopic | null;
+  /** Quem resolveu, informado ao finalizar. */
+  resolved_by?: ResolvedBy | null;
+  resolution_message_id?: string | null;
   close_reason: CloseReason | null;
   close_note: string | null;
   closed_at: string | null;
@@ -208,6 +223,32 @@ export const TICKET_CATEGORIES = [
 
 export type TicketCategory = (typeof TICKET_CATEGORIES)[number]["value"];
 
+/** Categorias de suporte: pedem o subtema (assunto do produto) ao finalizar. */
+export const SUPPORT_CATEGORIES: readonly TicketCategory[] = ["duvida_basica", "duvida_avancada", "duvida_meta", "bug", "reclamacao", "feedback"];
+
+export const TICKET_TOPICS = [
+  { value: "whatsapp", label: "WhatsApp / número" },
+  { value: "integracoes", label: "Integrações e API" },
+  { value: "automacoes", label: "Automações e fluxos" },
+  { value: "meta", label: "Meta / anúncios" },
+  { value: "funil", label: "Funil e negócios" },
+  { value: "importacao", label: "Importação e cadastro" },
+  { value: "usuarios", label: "Usuários e acesso" },
+  { value: "financeiro", label: "Plano e financeiro" },
+  { value: "relatorios", label: "Relatórios e dashboards" },
+  { value: "outro", label: "Outro assunto" },
+] as const;
+
+export type TicketTopic = (typeof TICKET_TOPICS)[number]["value"];
+
+export const RESOLVED_BY = [
+  { value: "community", label: "Comunidade", hint: "Um membro ou parceiro resolveu" },
+  { value: "team", label: "Equipe", hint: "A equipe DataCrazy resolveu" },
+  { value: "both", label: "Comunidade e equipe", hint: "Os dois ajudaram" },
+] as const;
+
+export type ResolvedBy = (typeof RESOLVED_BY)[number]["value"];
+
 export const CLOSE_REASONS = {
   resolved: "Finalizado",
   parallel: "Assunto paralelo",
@@ -249,6 +290,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
     "Olá, {nome}! Recebemos seu pedido para entrar na comunidade DataCrazy, mas não encontramos nenhuma empresa cadastrada com o e-mail {email}. Confira se é o mesmo e-mail que você usa no CRM DataCrazy e envie o formulário novamente.",
   join_msg_rejected: "Olá, {nome}! Seu pedido para entrar na comunidade DataCrazy não foi aprovado.",
   join_msg_accepted: "Olá, {nome}! Seu pedido foi aprovado e você entrou no grupo {grupo}. Seja bem-vindo(a) à comunidade DataCrazy!",
+  member_reply_window_minutes: 10,
+  report_enabled: false,
+  report_weekday: 1,
+  report_hour: 9,
+  report_period_days: 7,
+  report_recipients: [],
+  report_last_sent_at: null,
 };
 
 /**
@@ -260,7 +308,9 @@ export function toSettings(row: Partial<Record<keyof AppSettings, unknown>> | nu
   if (!row) return out;
   for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[]) {
     const v = row[key];
-    if (v !== undefined && v !== null && typeof v === typeof DEFAULT_SETTINGS[key]) (out as Record<string, unknown>)[key] = v;
+    const d = DEFAULT_SETTINGS[key];
+    // Padrão null (ex.: data do último envio): aceita o texto do banco.
+    if (v !== undefined && v !== null && (d === null ? typeof v === "string" : typeof v === typeof d)) (out as Record<string, unknown>)[key] = v;
   }
   return out;
 }

@@ -66,7 +66,7 @@ export async function searchCompanies(input: z.input<typeof searchSchema>): Prom
     let q = db.from("b2b_companies").select("company_id, tenant_id, name, cnpj, users_count").limit(30);
     if (query) {
       const term = query.replace(/[%,()]/g, " ");
-      const digits = query.replace(/D/g, "");
+      const digits = query.replace(/\D/g, "");
       q = q.or([`name.ilike.%${term}%`, `tenant_id.ilike.%${term}%`, digits.length >= 3 && `cnpj.ilike.%${digits}%`].filter(Boolean).join(","));
     }
     const { data, error } = await q.order("users_count", { ascending: false }).order("name");

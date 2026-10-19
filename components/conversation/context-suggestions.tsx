@@ -22,7 +22,13 @@ export function ContextSuggestions({ ticketId, disabled }: { ticketId: string; d
   return (
     <div className="flex flex-col gap-1.5 border-t border-border bg-primary-soft/30 px-3 py-2 sm:px-5">
       <span className="text-[11px] font-medium text-muted-foreground">
-        {data.length === 1 ? "Mensagem no grupo durante este atendimento" : `${data.length} mensagens no grupo durante este atendimento`}
+        {data.every((s) => s.reason === "member_reply")
+          ? data.length === 1
+            ? "Pode ser a resposta de outro membro a esta dúvida"
+            : `${data.length} mensagens que podem ser respostas a esta dúvida`
+          : data.length === 1
+            ? "Mensagem no grupo durante este atendimento"
+            : `${data.length} mensagens no grupo durante este atendimento`}
       </span>
       {data.map((s) => (
         <SuggestionRow key={s.id} ticketId={ticketId} suggestion={s} />
@@ -67,10 +73,11 @@ function SuggestionRow({ ticketId, suggestion: s }: { ticketId: string; suggesti
           <span className="truncate font-medium">{name}</span>
           {s.contact?.company?.name && <span className="truncate text-[11px] text-muted-foreground">· {s.contact.company.name}</span>}
           <span className="shrink-0 text-[11px] text-muted-foreground">· {formatRelative(s.message?.sent_at ?? s.created_at)}</span>
+          {s.reason === "member_reply" && <span className="shrink-0 rounded bg-primary-soft px-1.5 text-[10.5px] font-medium text-primary">resposta sem citação</span>}
         </span>
         <span className="line-clamp-1 text-[12.5px] text-muted-foreground">{text}</span>
       </div>
-      <Button size="sm" onClick={accept} disabled={pending} title="Trazer este lead e as mensagens dele para este atendimento">
+      <Button size="sm" onClick={accept} disabled={pending} title={s.reason === "member_reply" ? "É uma resposta a esta dúvida: traz a pessoa e a mensagem para este atendimento (conta como ajuda da comunidade)" : "Trazer este lead e as mensagens dele para este atendimento"}>
         {pending ? <Loader2 className="animate-spin" /> : <UserPlus />} Adicionar ao atendimento
       </Button>
       <Button variant="ghost" size="icon-sm" onClick={dismiss} disabled={pending} aria-label="Ignorar sugestão" title="Ignorar: continua num atendimento separado">

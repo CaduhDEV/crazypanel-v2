@@ -272,7 +272,7 @@ export function ChatPanel({
         </div>
       )}
 
-      <FinishDialog ticketId={ticket.id} mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
+      <FinishDialog ticketId={ticket.id} ownerId={ticket.contact_id} mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
     </div>
   );
 }
