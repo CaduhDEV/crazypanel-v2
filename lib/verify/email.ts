@@ -31,7 +31,8 @@ async function ensureAuthUser(db: Admin, email: string, name: string): Promise<s
     email,
     email_confirm: true,
     app_metadata: { kind: "lead" },
-    user_metadata: { name },
+    // kind também no user_metadata: o app_metadata só é gravado depois do INSERT (triggers do Auth).
+    user_metadata: { name, kind: "lead" },
   });
   if (data?.user) return data.user.id;
   // Já existe (lead de outra tentativa, ou alguém da equipe): segue com o mesmo usuário.
