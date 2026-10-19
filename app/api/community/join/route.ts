@@ -15,7 +15,7 @@ const MAX_PER_PHONE_PER_HOUR = 5;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const MESSAGES: Record<JoinStatus | "invalid" | "rate_limited", string> = {
-  pending: "Pedido recebido! Nossa equipe vai analisar e liberar sua entrada na comunidade pelo WhatsApp.",
+  pending: "Pedido recebido! Nossa equipe vai analisar e liberar sua entrada na comunidade.",
   joined: "Você já faz parte da comunidade no WhatsApp.",
   accepted: "Seu pedido já foi aprovado.",
   invited: "Seu pedido foi aprovado: enviamos o convite no seu WhatsApp.",
