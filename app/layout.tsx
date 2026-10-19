@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { THEME_SCRIPT } from "@/lib/theme-script";
 import { Providers } from "@/components/providers";
@@ -23,11 +22,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable}`}>
+      <head>
+        {/* Aplica o tema salvo antes da primeira pintura (sem piscar entre claro e escuro).
+            Script simples renderizado só no servidor: o next/script inline gera aviso no React 19. */}
+        <script id="theme" dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
-        {/* Aplica o tema salvo antes da primeira pintura (sem piscar entre claro e escuro). */}
-        <Script id="theme" strategy="beforeInteractive">
-          {THEME_SCRIPT}
-        </Script>
         <Providers>{children}</Providers>
       </body>
     </html>
