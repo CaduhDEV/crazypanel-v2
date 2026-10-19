@@ -79,12 +79,20 @@ export function ResolutionDonut({ resolucao, className, big }: { resolucao: Live
           <Label
             content={({ viewBox }) => {
               if (!viewBox || !("cx" in viewBox)) return null;
+              // Texto proporcional ao furo da rosca: cabe em qualquer tamanho de painel.
+              const cx = viewBox.cx ?? 0;
+              const cy = viewBox.cy ?? 0;
+              const inner = Number(viewBox.innerRadius) || 40;
+              const main = Math.max(12, inner * (big ? 0.52 : 0.46));
+              const sub = Math.max(8, inner * 0.17);
+              const gap = main * 0.12;
+              const top = cy - (main + gap + sub) / 2;
               return (
-                <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                  <tspan x={viewBox.cx} y={viewBox.cy} className={cn("fill-foreground font-semibold", big ? "text-5xl" : "text-3xl")}>
+                <text x={cx} textAnchor="middle" className="font-sans">
+                  <tspan x={cx} y={top + main / 2} dominantBaseline="central" className="fill-foreground font-semibold" style={{ fontSize: main }}>
                     {pctCommunity}%
                   </tspan>
-                  <tspan x={viewBox.cx} y={(viewBox.cy ?? 0) + (big ? 34 : 22)} className={cn("fill-muted-foreground", big ? "text-base" : "text-xs")}>
+                  <tspan x={cx} y={top + main + gap + sub / 2} dominantBaseline="central" className="fill-muted-foreground" style={{ fontSize: sub }}>
                     pela comunidade
                   </tspan>
                 </text>
