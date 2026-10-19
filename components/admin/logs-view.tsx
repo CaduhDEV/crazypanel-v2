@@ -20,7 +20,7 @@ import {
 import { reprocessFailedEvents } from "@/lib/admin/whatsapp";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatRelative } from "@/lib/utils";
-import { communityEventText, type CommunityEventRow } from "@/components/community/event-text";
+import { COMMUNITY_EVENT_SELECT, communityEventText, withGroupNames, type CommunityEventRow } from "@/components/community/event-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -244,16 +244,17 @@ function CommunityTab() {
     queryKey: ["logs", "community", filter],
     initialPageParam: undefined as number | undefined,
     queryFn: async ({ pageParam }) => {
-      let q = createClient()
+      const db = createClient();
+      let q = db
         .from("community_events")
-        .select("*, group:wa_groups(name), actor:profiles(name)")
+        .select(COMMUNITY_EVENT_SELECT)
         .order("id", { ascending: false })
         .limit(COMMUNITY_PAGE);
       if (types) q = q.in("type", types);
       if (pageParam) q = q.lt("id", pageParam);
       const { data, error } = await q;
       if (error) throw error;
-      return (data ?? []) as CommunityEventRow[];
+      return withGroupNames(db, (data ?? []) as CommunityEventRow[]);
     },
     getNextPageParam: (last) => (last.length === COMMUNITY_PAGE ? last[last.length - 1].id : undefined),
   });

@@ -1,9 +1,11 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatPhone } from "@/lib/utils";
 
 /** Linha do log da comunidade (solicitações e entradas/saídas). */
 export interface CommunityEventRow {
   id: number;
   type: string;
+  group_jid: string | null;
   phone: string | null;
   name: string | null;
   actor_phone: string | null;
@@ -12,6 +14,17 @@ export interface CommunityEventRow {
   created_at: string;
   group?: { name: string | null } | null;
   actor?: { name: string | null } | null;
+}
+
+/** Colunas do log; o grupo não tem chave estrangeira (pode já ter saído do painel), então o nome vem à parte por withGroupNames. */
+export const COMMUNITY_EVENT_SELECT = "*, actor:profiles(name)";
+
+/** Completa o nome do grupo de cada evento. */
+export async function withGroupNames<T extends { group_jid: string | null }>(db: SupabaseClient, rows: T[]): Promise<(T & { group: { name: string | null } | null })[]> {
+  const jids = [...new Set(rows.map((r) => r.group_jid).filter((j): j is string => !!j))];
+  const { data } = jids.length ? await db.from("wa_groups").select("jid, name").in("jid", jids) : { data: [] };
+  const names = new Map(((data ?? []) as { jid: string; name: string | null }[]).map((g) => [g.jid, g.name]));
+  return rows.map((r) => ({ ...r, group: r.group_jid ? { name: names.get(r.group_jid) ?? null } : null }));
 }
 
 const PV_KIND: Record<string, string> = {

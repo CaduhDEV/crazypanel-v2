@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { EmptyState, Skeleton, Tip } from "@/components/ui/misc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { communityEventText } from "@/components/community/event-text";
+import { COMMUNITY_EVENT_SELECT, communityEventText, withGroupNames, type CommunityEventRow } from "@/components/community/event-text";
 import { CompanyDialog } from "@/components/companies/company-dialog";
 import type { CompanyRow } from "@/components/companies/companies-view";
 
@@ -561,13 +561,14 @@ function TimelineDialog({ request: r, onClose }: { request: JoinRequestItem; onC
   const { data, isLoading } = useQuery({
     queryKey: ["join-request-events", r.id],
     queryFn: async () => {
-      const { data, error } = await createClient()
+      const db = createClient();
+      const { data, error } = await db
         .from("community_events")
-        .select("*, group:wa_groups(name), actor:profiles(name)")
+        .select(COMMUNITY_EVENT_SELECT)
         .eq("request_id", r.id)
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data ?? [];
+      return withGroupNames(db, (data ?? []) as CommunityEventRow[]);
     },
   });
   return (
@@ -584,10 +585,10 @@ function TimelineDialog({ request: r, onClose }: { request: JoinRequestItem; onC
         ) : (
           <ol className="flex flex-col gap-2 border-l border-border pl-4">
             {data.map((e) => (
-              <li key={e.id as number} className="relative text-sm">
+              <li key={e.id} className="relative text-sm">
                 <span className="absolute -left-[21px] top-1.5 size-2 rounded-full bg-primary" aria-hidden />
-                <span className="block">{communityEventText(e as Parameters<typeof communityEventText>[0])}</span>
-                <span className="text-xs text-muted-foreground">{formatRelative(e.created_at as string)}</span>
+                <span className="block">{communityEventText(e)}</span>
+                <span className="text-xs text-muted-foreground">{formatRelative(e.created_at)}</span>
               </li>
             ))}
           </ol>
