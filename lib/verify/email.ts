@@ -25,6 +25,12 @@ export function emailCodeLength(): number {
   return Number.isInteger(n) && n >= 6 && n <= 10 ? n : 8;
 }
 
+/** Validade do código do e-mail: igual ao "Email OTP expiration" do Supabase Auth (padrão 3600 s). */
+function emailCodeTtlMs(): number {
+  const n = Number(process.env.EMAIL_OTP_EXPIRY_SECONDS ?? 3600);
+  return (Number.isFinite(n) && n > 0 ? n : 3600) * 1000;
+}
+
 /** Cliente público, sem guardar sessão: só para pedir e conferir o código. */
 function authClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
@@ -141,7 +147,8 @@ export async function confirmEmail(db: Admin, v: Verification, code: unknown) {
   if (error) {
     const locked = await registerFailure(db, v, { email_attempts: v.email_attempts + 1 });
     if (locked) throw new VerifyError("locked", lockedMessage(), 429, LIMITS.lockMs / 1000);
-    const expired = /expired/i.test(error.message);
+    // O Supabase responde igual (otp_expired, "expired or is invalid") para código errado e vencido: decide pelo horário do último envio.
+    const expired = !!v.email_sent_at && Date.now() - Date.parse(v.email_sent_at) > emailCodeTtlMs();
     throw new VerifyError(expired ? "expired_code" : "wrong_code", expired ? "Esse código expirou. Peça um novo." : "Código incorreto. Confira e tente de novo.");
   }
   await db.from("lead_verifications").update({ email_verified_at: new Date().toISOString(), status: "phone_pending" }).eq("id", v.id);
