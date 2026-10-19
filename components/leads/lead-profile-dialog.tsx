@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { refreshContactCrm } from "@/lib/crm-actions";
 import { deleteContact, getContactDeletionImpact } from "@/lib/leads/actions";
 import { cn, contactLabel, formatDuration, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, CONTACT_KIND_LABELS, TICKET_CATEGORIES, type Company, type Contact } from "@/lib/types";
+import { CLOSE_REASONS, CONTACT_KIND_LABELS, classificationLabel, type Company, type Contact } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ type TicketItem = {
   subject: string | null;
   assignee_id: string | null;
   category: string | null;
+  topic?: string | null;
   close_reason: string | null;
   opened_at: string;
   closed_at: string | null;
@@ -54,7 +55,7 @@ type Profile = {
 
 const profileKey = (id: string) => ["lead-profile", id] as const;
 const TICKET_SELECT =
-  "id, number, status, subject, assignee_id, category, close_reason, opened_at, closed_at, first_response_at, message_count, group:wa_groups(name)";
+  "id, number, status, subject, assignee_id, category, topic, close_reason, opened_at, closed_at, first_response_at, message_count, group:wa_groups(name)";
 
 export function LeadProfileDialog({ contactId, onClose, onDeleted }: { contactId: string | null; onClose: () => void; onDeleted?: () => void }) {
   return (
@@ -315,7 +316,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
           <ul className="col-span-2 grid gap-1.5 sm:grid-cols-2">
             {data.tickets.map((t) => {
               const assignee = t.assignee_id ? memberById.get(t.assignee_id)?.name : null;
-              const category = TICKET_CATEGORIES.find((x) => x.value === t.category)?.label;
+              const category = classificationLabel(t.category, t.topic);
               return (
                 <li key={t.id}>
                   <Link href={`/atendimento?ticket=${t.id}`} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs hover:bg-accent/40">

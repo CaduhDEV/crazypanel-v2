@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { contactLabel } from "@/lib/utils";
-import { CLOSE_REASONS, TICKET_CATEGORIES, type ContactKind, type Message, type TicketEvent } from "@/lib/types";
+import { classificationLabel, CLOSE_REASONS, type ContactKind, type Message, type TicketEvent } from "@/lib/types";
 import type { Member } from "@/components/app/app-context";
 import { resolveAuthor, type Author } from "@/components/conversation/message-utils";
 import { useThread, useTicket, useTicketEvents, type ThreadData, type ThreadTicket } from "@/components/conversation/use-thread";
@@ -110,7 +110,7 @@ export function authorOf(m: Message, t: Transcript, memberById: Map<string, Memb
   return { ...author, company: !m.from_me && lead?.company ? lead.company.name : null };
 }
 
-export const categoryLabel = (v: string | null) => TICKET_CATEGORIES.find((c) => c.value === v)?.label ?? null;
+export const categoryLabel = (v: string | null, topic?: string | null) => classificationLabel(v, topic);
 
 /** Texto curto dos eventos do atendimento (transferências, entradas, finalização…). */
 export function eventText(e: TicketEvent, t: Transcript, memberById: Map<string, Member>): string {
@@ -135,7 +135,7 @@ export function eventText(e: TicketEvent, t: Transcript, memberById: Map<string,
       return `${actor ?? "Alguém"} devolveu para a fila`;
     case "closed": {
       const reason = (d.reason as keyof typeof CLOSE_REASONS) ?? "resolved";
-      const category = categoryLabel(d.category as string | null);
+      const category = categoryLabel(d.category as string | null, d.topic as string | null);
       return reason === "resolved" ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}` : CLOSE_REASONS[reason];
     }
     case "message_moved":

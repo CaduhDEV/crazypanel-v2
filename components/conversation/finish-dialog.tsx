@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,9 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { cn, formatRelative } from "@/lib/utils";
 import {
   RESOLVED_BY,
-  SUPPORT_CATEGORIES,
   TICKET_CATEGORIES,
-  TICKET_TOPICS,
+  topicsOf,
   type Message,
   type ResolvedBy,
   type TicketCategory,
@@ -82,13 +81,19 @@ export function FinishDialog({
   const parallel = mode === "parallel";
   const resolved = mode === "resolved";
 
+  // Assunto paralelo já abre como Comunidade · Off-topic (dá para trocar).
+  useEffect(() => {
+    if (!parallel) return;
+    setCategory((c) => c ?? "comunidade");
+    setTopic((t) => t ?? "offtopic");
+  }, [parallel]);
+
   const { data: replies, isLoading: loadingReplies } = useReplies(ticketId, ownerId, resolved);
   // Sugestão de quem resolveu, pelo que aconteceu no atendimento (o atendente pode trocar).
   const community = replies?.some((r) => !isTeam(r)) ?? false;
   const team = replies?.some(isTeam) ?? false;
   const suggested: ResolvedBy | null = community && team ? "both" : community ? "community" : team ? "team" : null;
   const by = resolvedBy ?? suggested;
-  const needsTopic = !!category && SUPPORT_CATEGORIES.includes(category);
 
   const reset = () => {
     setCategory(null);
@@ -105,7 +110,7 @@ export function FinishDialog({
         ticketId,
         reason: parallel ? "parallel" : "resolved",
         category,
-        topic: needsTopic ? (topic ?? undefined) : undefined,
+        topic: topic!,
         resolvedBy: resolved ? (by ?? undefined) : undefined,
         resolutionMessageId: resolved ? (resolution ?? undefined) : undefined,
         note: note || undefined,
@@ -116,7 +121,7 @@ export function FinishDialog({
       onFinished();
     });
 
-  const ready = !!category && (!needsTopic || !!topic) && (!resolved || !!by);
+  const ready = !!category && !!topic && (!resolved || !!by);
 
   return (
     <Dialog open={mode !== null} onOpenChange={(o) => !o && onClose()}>
@@ -134,13 +139,14 @@ export function FinishDialog({
           legend="Categoria"
           options={TICKET_CATEGORIES}
           value={category}
+          columns={4}
           onChange={(v) => {
             setCategory(v);
-            if (!SUPPORT_CATEGORIES.includes(v)) setTopic(null);
+            if (!topicsOf(v).some((t) => t.value === topic)) setTopic(null);
           }}
         />
 
-        {needsTopic && <Choices legend="Assunto" hint="Do que era a dúvida? Mostra o que vira tutorial ou correção." options={TICKET_TOPICS} value={topic} onChange={setTopic} />}
+        {category && <Choices legend="Subcategoria" options={topicsOf(category)} value={topic} onChange={setTopic} columns={4} />}
 
         {resolved && (
           <fieldset className="flex flex-col gap-2.5">
@@ -245,19 +251,21 @@ function Choices<T extends string>({
   options,
   value,
   onChange,
+  columns = 3,
 }: {
   legend: string;
   hint?: string;
   options: readonly { value: T; label: string }[];
   value: T | null;
   onChange: (v: T) => void;
+  columns?: 3 | 4;
 }) {
   return (
     <fieldset className="flex flex-col gap-2.5">
       <legend className="mb-2.5 text-[13px] font-medium">
         {legend} {hint && <span className="font-normal text-muted-foreground">· {hint}</span>}
       </legend>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className={cn("grid grid-cols-2 gap-2", columns === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
         {options.map((c) => (
           <button
             key={c.value}

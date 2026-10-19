@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { updateContactNotes } from "@/lib/leads/actions";
 import { cn, contactLabel, formatPhone, formatRelative, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, CONTACT_KIND_LABELS, TICKET_CATEGORIES, type Ticket } from "@/lib/types";
+import { CLOSE_REASONS, CONTACT_KIND_LABELS, classificationLabel, type Ticket } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,10 +23,9 @@ import { CrmSection } from "@/components/conversation/crm-section";
 
 type PanelData = {
   groups: { group_jid: string; is_admin: boolean; left_at: string | null; group: { name: string | null } | null }[];
-  history: Pick<Ticket, "id" | "number" | "status" | "category" | "close_reason" | "opened_at" | "subject">[];
+  history: Pick<Ticket, "id" | "number" | "status" | "category" | "topic" | "close_reason" | "opened_at" | "subject">[];
 };
 
-const categoryLabel = (value: string | null) => TICKET_CATEGORIES.find((c) => c.value === value)?.label;
 
 export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavigate?: (ticketId: string) => void }) {
   const { isAdmin } = useApp();
@@ -46,7 +45,7 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
         supabase.from("group_members").select("group_jid, is_admin, left_at, group:wa_groups(name)").eq("contact_id", contact!.id),
         supabase
           .from("tickets")
-          .select("id, number, status, category, close_reason, opened_at, subject")
+          .select("id, number, status, category, topic, close_reason, opened_at, subject")
           .eq("contact_id", contact!.id)
           .neq("id", ticket.id)
           .order("opened_at", { ascending: false })
@@ -167,7 +166,7 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
               <li key={t.id} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs">
                 <span className="flex items-center justify-between gap-2 text-muted-foreground">
                   <span>#{t.number} · {formatRelative(t.opened_at)}</span>
-                  <span>{t.status === "open" ? "Aberto" : (categoryLabel(t.category) ?? CLOSE_REASONS[t.close_reason ?? "resolved"])}</span>
+                  <span>{t.status === "open" ? "Aberto" : (classificationLabel(t.category, t.topic) ?? CLOSE_REASONS[t.close_reason ?? "resolved"])}</span>
                 </span>
                 <span className="line-clamp-2">{t.subject}</span>
               </li>

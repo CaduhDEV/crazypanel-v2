@@ -10,7 +10,7 @@ import { getSettings } from "@/lib/settings";
 import { kindFromMime, MAX_MEDIA_BYTES, MEDIA_BUCKET, mediaPath, signedMediaUrl } from "@/lib/media";
 import { storeIncomingMedia } from "@/lib/webhook/process";
 import type { Message, Profile, ResolvedBy, TicketCategory, TicketTopic } from "@/lib/types";
-import { RESOLVED_BY, SUPPORT_CATEGORIES, TICKET_CATEGORIES, TICKET_TOPICS, VOICE_NOTE_PREFIX } from "@/lib/types";
+import { RESOLVED_BY, TICKET_CATEGORIES, TICKET_TOPICS, VOICE_NOTE_PREFIX } from "@/lib/types";
 
 const id = z.uuid({ error: "Identificador inválido." });
 
@@ -392,13 +392,13 @@ const closeSchema = z
     ticketId: id,
     reason: z.enum(["resolved", "parallel"]),
     category: z.enum(categoryValues, { error: "Escolha a categoria do atendimento." }),
-    topic: z.enum(topicValues).optional(),
+    topic: z.enum(topicValues, { error: "Escolha a subcategoria do atendimento." }),
     resolvedBy: z.enum(resolvedByValues).optional(),
     resolutionMessageId: id.optional(),
     note: z.string().trim().max(2000).optional(),
   })
-  .refine((d) => !SUPPORT_CATEGORIES.includes(d.category) || !!d.topic, {
-    error: "Escolha o assunto (subtema) do atendimento.",
+  .refine((d) => TICKET_TOPICS.some((t) => t.value === d.topic && t.category === d.category), {
+    error: "Essa subcategoria não é da categoria escolhida.",
     path: ["topic"],
   })
   .refine((d) => d.reason !== "resolved" || !!d.resolvedBy, {
@@ -421,7 +421,7 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
         closed_by: profile.id,
         close_reason: reason,
         category,
-        topic: SUPPORT_CATEGORIES.includes(category) ? (topic ?? null) : null,
+        topic,
         resolved_by: reason === "resolved" ? (resolvedBy ?? null) : null,
         resolution_message_id: reason === "resolved" ? (resolutionMessageId ?? null) : null,
         close_note: note || null,
@@ -433,7 +433,7 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
       ticket_id: ticketId,
       type: "closed",
       actor_id: profile.id,
-      data: { reason, category, topic: topic ?? null, resolved_by: resolvedBy ?? null },
+      data: { reason, category, topic, resolved_by: resolvedBy ?? null },
     });
   });
 }

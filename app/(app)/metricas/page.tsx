@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireAdminPage } from "@/lib/auth/session";
-import { loadCommunityReport, reportPeriod } from "@/lib/reports/data";
+import { loadMetrics } from "@/lib/reports/data";
 import { PageHeader } from "@/components/app/page-header";
 import { MetricsView } from "@/components/metrics/metrics-view";
 
@@ -14,23 +14,21 @@ export default async function MetricasPage({ searchParams }: { searchParams: Sea
   await requireAdminPage();
   const params = await searchParams;
   const days = PERIODS.find((d) => d === Number(params.dias)) ?? 7;
-  const { inicio, fim } = reportPeriod(days);
 
-  let report = null;
-  let error: string | null = null;
-  try {
-    report = await loadCommunityReport(inicio, fim);
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Não foi possível calcular as métricas.";
-  }
+  const result = await loadMetrics(days).then(
+    (data) => ({ data, error: null }),
+    (e: unknown) => ({ data: null, error: e instanceof Error ? e.message : "Não foi possível calcular as métricas." }),
+  );
 
   return (
-    <>
-      <PageHeader
-        title="Métricas das comunidades"
-        description="Quanto a comunidade resolve sozinha, onde a equipe entra e o que mais gera dúvida. As mesmas definições do relatório oficial em PDF."
-      />
-      <MetricsView report={report} days={days} periods={[...PERIODS]} error={error} />
-    </>
+    // No desktop a página cabe na tela: as métricas trocam por páginas, sem rolar.
+    <div className="flex flex-1 flex-col lg:h-dvh lg:max-h-dvh lg:overflow-hidden">
+      <PageHeader title="Métricas das comunidades" description="O que a comunidade resolve sozinha e onde a equipe entra. Use as setas para trocar de página." />
+      {result.data ? (
+        <MetricsView key={days} initial={result.data} periods={[...PERIODS]} />
+      ) : (
+        <p className="m-6 rounded-md border border-destructive/30 bg-destructive-soft px-3 py-2 text-sm text-destructive">{result.error}</p>
+      )}
+    </div>
   );
 }

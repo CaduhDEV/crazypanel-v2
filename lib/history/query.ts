@@ -35,7 +35,7 @@ export function parseHistoryFilters(p: Record<string, string | undefined | null>
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 export const HISTORY_COLUMNS =
-  "id, number, status, subject, group_jid, contact_id, assignee_id, category, close_reason, opened_at, closed_at, first_response_at, message_count, contact:contacts!contact_id(id, name, phone, lid, kind, avatar_url, company:companies(name)), group:wa_groups(name)";
+  "id, number, status, subject, group_jid, contact_id, assignee_id, category, topic, close_reason, opened_at, closed_at, first_response_at, message_count, contact:contacts!contact_id(id, name, phone, lid, kind, avatar_url, company:companies(name)), group:wa_groups(name)";
 
 /**
  * Busca uma página de atendimentos com os filtros. A busca por nome do lead

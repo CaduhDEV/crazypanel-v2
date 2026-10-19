@@ -43,7 +43,7 @@ export function transcriptSummary(t: Transcript, memberById: Map<string, Member>
   return {
     title: `Atendimento #${k.number}`,
     group: k.group?.name ?? "Grupo",
-    status: k.status === "open" ? "Aberto" : (categoryLabel(k.category) ?? CLOSE_REASONS[k.close_reason ?? "resolved"]),
+    status: k.status === "open" ? "Aberto" : (categoryLabel(k.category, k.topic) ?? CLOSE_REASONS[k.close_reason ?? "resolved"]),
     assignee: assignee ?? "Sem responsável",
     opened: fmt(k.opened_at),
     closed: k.closed_at ? fmt(k.closed_at) : null,

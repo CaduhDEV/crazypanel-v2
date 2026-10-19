@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, ExternalLink, History, Loader2, Search, X } from "lucide-react";
 import type { HistoryFilters } from "@/lib/history/query";
 import { cn, contactLabel, formatDuration, formatRelative, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, TICKET_CATEGORIES, type CloseReason, type ContactKind } from "@/lib/types";
+import { classificationLabel, CLOSE_REASONS, TICKET_CATEGORIES, type CloseReason, type ContactKind } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export interface HistoryRow {
   group_jid: string;
   assignee_id: string | null;
   category: string | null;
+  topic?: string | null;
   close_reason: CloseReason | null;
   opened_at: string;
   closed_at: string | null;
@@ -186,7 +187,7 @@ export function HistoryView({
                   ? formatDuration((Date.parse(r.first_response_at) - Date.parse(r.opened_at)) / 1000)
                   : "—";
               const duration = r.closed_at ? formatDuration((Date.parse(r.closed_at) - Date.parse(r.opened_at)) / 1000) : "—";
-              const category = TICKET_CATEGORIES.find((c) => c.value === r.category)?.label;
+              const category = classificationLabel(r.category, r.topic);
               return (
                 <tr
                   key={r.id}

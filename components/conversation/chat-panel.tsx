@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, CircleCheck, Coffee, Loader2, MessagesSquare, PanelRightClose, PanelRightOpen, Upload, X } from "lucide-react";
 import { cn, contactLabel, formatDayLabel, formatPhone, formatTime } from "@/lib/utils";
-import { CLOSE_REASONS, TICKET_CATEGORIES, type Message, type TicketEvent } from "@/lib/types";
+import { classificationLabel, CLOSE_REASONS, type Message, type TicketEvent } from "@/lib/types";
 import { Avatar, AvatarStack } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Skeleton, Tip } from "@/components/ui/misc";
@@ -326,7 +326,7 @@ function EventLine({
       break;
     case "closed": {
       const reason = (data.reason as keyof typeof CLOSE_REASONS) ?? "resolved";
-      const category = TICKET_CATEGORIES.find((c) => c.value === data.category)?.label;
+      const category = classificationLabel(data.category as string | null, data.topic as string | null);
       text = reason === "resolved" ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}` : `${CLOSE_REASONS[reason]}${actor ? ` · ${actor}` : ""}`;
       break;
     }

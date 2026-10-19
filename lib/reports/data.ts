@@ -76,3 +76,34 @@ export function indicators(s: ReportSummary) {
     reabertas: pct(s.reabertas, s.fechadas),
   };
 }
+
+// --- Ao vivo (página /metricas e telão) ----------------------------------------
+
+export interface LiveReport {
+  serie: { dia: string; threads: number; comunidade: number; equipe: number; sem_resposta: number; mediana_tecnico_min: number | null }[];
+  hoje: { hora: number; threads: number; mensagens: number }[];
+  fila: { abertas: number; aguardando: number; sem_responsavel: number; estouradas: number; espera_max_min: number | null };
+  top_comunidade: { id: string; nome: string | null; avatar_url: string | null; empresa: string | null; tipo: string; threads: number; respostas: number; resolvidas: number }[];
+  top_equipe: { id: string; nome: string; avatar_url: string | null; assumidas: number; resolvidas: number; respondidas: number; dentro_sla: number; mediana_min: number | null }[];
+  resolucao: { comunidade: number; equipe: number; ambos: number; sem_resposta: number };
+  categorias: { categoria: string; subcategoria: string | null; threads: number }[];
+}
+
+export interface MetricsPayload {
+  days: number;
+  report: CommunityReport;
+  live: LiveReport;
+}
+
+export async function loadMetrics(days: number): Promise<MetricsPayload> {
+  const { inicio, fim } = reportPeriod(days, new Date(Date.now() + 3_600_000)); // até a hora atual inclusive
+  const db = createAdminClient();
+  const [report, live] = await Promise.all([
+    loadCommunityReport(inicio, fim),
+    db.rpc("community_report_live", { p_inicio: inicio.toISOString(), p_fim: fim.toISOString() }).then(({ data, error }) => {
+      if (error) throw new Error(`Não foi possível calcular as métricas ao vivo: ${error.message}`);
+      return data as LiveReport;
+    }),
+  ]);
+  return { days, report, live };
+}
