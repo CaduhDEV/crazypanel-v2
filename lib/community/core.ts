@@ -28,6 +28,9 @@ export interface JoinRequestRow {
   link_status: "found" | "not_found" | "error" | null;
   company_id: string | null;
   company_name: string | null;
+  gleap_tenant_id?: string | null;
+  crm_lead_id?: string | null;
+  crm_tax_id?: string | null;
   status: JoinStatus;
 }
 
@@ -116,11 +119,13 @@ export async function triageJoinRequest(db: Admin, id: string): Promise<JoinStat
   if (!req) return "error";
 
   try {
-    // 1) Lead (cria se ainda não existe).
+    // 1) Lead já existente (o lead só é CRIADO quando um admin aceita a solicitação).
     let contactId = req.contact_id;
     if (!contactId && (req.phone || req.lid)) {
-      const { data } = await db.rpc("upsert_contact", { p_phone: req.phone, p_lid: req.lid, p_name: req.name });
-      contactId = (data as string | null) ?? null;
+      const key = req.phone ? phoneKey(req.phone) : null;
+      const filters = [key && `phone_key.eq.${key}`, req.lid && `lid.eq.${req.lid}`].filter(Boolean).join(",");
+      const { data } = filters ? await db.from("contacts").select("id").or(filters).limit(1).maybeSingle() : { data: null };
+      contactId = (data?.id as string | undefined) ?? null;
     }
     const { data: contact } = contactId
       ? await db.from("contacts").select("id, name, email, company:companies(id, name, external_id)").eq("id", contactId).maybeSingle()
@@ -152,7 +157,8 @@ export async function triageJoinRequest(db: Admin, id: string): Promise<JoinStat
       const { data: co } = await db.from("companies").select("id").eq("external_id", tenant.company_tenant_id).maybeSingle();
       companyId = (co?.id as string | undefined) ?? null;
     }
-    const found = !!(linked || tenant || crm);
+    // O que já veio na solicitação (ex.: formulário verificado, que consulta o Gleap/CRM ao vivo) vale onde a busca local não achar.
+    const found = !!(linked || tenant || crm || req.company_id || req.gleap_tenant_id || req.crm_lead_id);
 
     // 4) Já está em algum grupo da comunidade?
     let status: JoinStatus = req.status;
@@ -173,11 +179,11 @@ export async function triageJoinRequest(db: Admin, id: string): Promise<JoinStat
         contact_id: contactId,
         name: req.name ?? tenant?.name ?? crm?.name ?? (contact?.name as string | null) ?? null,
         link_status: found ? "found" : "not_found",
-        company_id: companyId,
-        company_name: linked?.name ?? tenant?.company_name ?? null,
-        gleap_tenant_id: linked?.external_id ?? tenant?.company_tenant_id ?? null,
-        crm_lead_id: crm?.id ?? null,
-        crm_tax_id: crm?.taxId ?? null,
+        company_id: companyId ?? req.company_id,
+        company_name: linked?.name ?? tenant?.company_name ?? req.company_name ?? null,
+        gleap_tenant_id: linked?.external_id ?? tenant?.company_tenant_id ?? req.gleap_tenant_id ?? null,
+        crm_lead_id: crm?.id ?? req.crm_lead_id ?? null,
+        crm_tax_id: crm?.taxId ?? req.crm_tax_id ?? null,
         status,
         error: null,
       })

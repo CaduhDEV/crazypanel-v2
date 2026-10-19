@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Copy, Loader2, MessageSquareText, RefreshCw, Users } from "lucide-react";
+import { AlertTriangle, Copy, Loader2, MessageSquareText, RefreshCw, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { refreshContactCrm } from "@/lib/crm-actions";
+import { deleteContact, getContactDeletionImpact } from "@/lib/leads/actions";
 import { cn, contactLabel, formatDuration, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
 import { CLOSE_REASONS, CONTACT_KIND_LABELS, TICKET_CATEGORIES, type Company, type Contact } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton, Tip } from "@/components/ui/misc";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useApp } from "@/components/app/app-context";
 import { useNow } from "@/components/app/use-now";
 import { CompanyChoices } from "@/components/leads/company-choices";
@@ -55,18 +56,18 @@ const profileKey = (id: string) => ["lead-profile", id] as const;
 const TICKET_SELECT =
   "id, number, status, subject, assignee_id, category, close_reason, opened_at, closed_at, first_response_at, message_count, group:wa_groups(name)";
 
-export function LeadProfileDialog({ contactId, onClose }: { contactId: string | null; onClose: () => void }) {
+export function LeadProfileDialog({ contactId, onClose, onDeleted }: { contactId: string | null; onClose: () => void; onDeleted?: () => void }) {
   return (
     <Dialog open={!!contactId} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-5xl overflow-y-auto">
-        {contactId && <LeadProfile key={contactId} contactId={contactId} />}
+        {contactId && <LeadProfile key={contactId} contactId={contactId} onDeleted={() => (onClose(), onDeleted?.())} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function LeadProfile({ contactId }: { contactId: string }) {
-  const { memberById } = useApp();
+function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: () => void }) {
+  const { memberById, isAdmin } = useApp();
   const queryClient = useQueryClient();
   const [refreshing, startRefresh] = useTransition();
   const now = useNow();
@@ -373,6 +374,8 @@ function LeadProfile({ contactId }: { contactId: string }) {
           )}
         </Section>
       </div>
+
+      {isAdmin && <DeleteLead contactId={c.id} name={name} onDeleted={onDeleted} />}
     </>
   );
 }
@@ -411,5 +414,69 @@ function Row({ label, value, mono, onCopy }: { label: string; value: string | nu
         )}
       </dd>
     </>
+  );
+}
+
+/** Excluir lead: confirma mostrando o que vai junto (atendimentos e mensagens). */
+function DeleteLead({ contactId, name, onDeleted }: { contactId: string; name: string; onDeleted: () => void }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+  const { data: impact, isLoading } = useQuery({
+    queryKey: ["lead-delete-impact", contactId],
+    enabled: open,
+    queryFn: async () => {
+      const res = await getContactDeletionImpact({ contactId });
+      if (!res.ok) throw new Error(res.error);
+      return res.data;
+    },
+  });
+
+  const remove = () =>
+    start(async () => {
+      const res = await deleteContact({ contactId });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`${name} foi excluído.`);
+      setOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      onDeleted();
+    });
+
+  return (
+    <div className="flex justify-end border-t border-border pt-4">
+      <Button variant="destructive-ghost" size="sm" onClick={() => setOpen(true)}>
+        <Trash2 /> Excluir lead
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => !o && !pending && setOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Excluir {name}?</DialogTitle>
+            <DialogDescription>Essa ação não pode ser desfeita.</DialogDescription>
+          </DialogHeader>
+          {isLoading || !impact ? (
+            <Skeleton className="h-16" />
+          ) : (
+            <ul className="flex flex-col gap-1.5 rounded-md border border-destructive/30 bg-destructive-soft px-3 py-2.5 text-sm text-destructive">
+              <li>O lead e o perfil dele saem do painel.</li>
+              {impact.tickets > 0 && (
+                <li>
+                  {pluralize(impact.tickets, "atendimento", "atendimentos")} em que ele é o principal, com{" "}
+                  {pluralize(impact.messages, "mensagem", "mensagens")}, também serão apagados.
+                </li>
+              )}
+              {impact.groups > 0 && <li>Ele continua nos grupos do WhatsApp; só sai da base do painel.</li>}
+            </ul>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={remove} disabled={pending || isLoading}>
+              {pending && <Loader2 className="animate-spin" />} Excluir definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

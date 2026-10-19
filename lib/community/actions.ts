@@ -31,6 +31,28 @@ async function loadRequest(db: Admin, id: string): Promise<JoinRequestRow> {
   return data;
 }
 
+/**
+ * Cria (ou reaproveita) o lead da solicitação aceita: telefone, nome, e-mail,
+ * empresa e dados do CRM. O lead só nasce aqui, no aceite.
+ */
+async function createLeadFromRequest(db: Admin, req: JoinRequestRow, adminId: string): Promise<string | null> {
+  const { data: contactId } = await db.rpc("upsert_contact", { p_phone: req.phone, p_lid: req.lid, p_name: req.name });
+  const id = (contactId as string | null) ?? null;
+  if (!id) return null;
+  const { data: contact } = await db.from("contacts").select("email, company_id").eq("id", id).maybeSingle();
+  const now = new Date().toISOString();
+  await db
+    .from("contacts")
+    .update({
+      email: (contact?.email as string | null) ?? req.email,
+      ...(req.company_id && !contact?.company_id ? { company_id: req.company_id, linked_at: now, linked_by: adminId } : {}),
+      ...(req.crm_lead_id ? { crm_lead_id: req.crm_lead_id, crm_tax_id: req.crm_tax_id ?? null, crm_checked_at: now } : {}),
+    })
+    .eq("id", id);
+  await db.from("join_requests").update({ contact_id: id }).eq("id", req.id);
+  return id;
+}
+
 /** Ocupação real do grupo (uazapi); se a consulta falhar, usa o que o painel conhece. */
 async function occupancy(db: Admin, uaz: UazapiClient, jid: string): Promise<number | null> {
   try {
@@ -177,6 +199,7 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
       .eq("id", id);
 
     if (status !== "error") {
+      req.contact_id = (await createLeadFromRequest(db, req, admin.id)) ?? req.contact_id;
       await logCommunityEvent(db, {
         type: "request_accepted",
         request_id: id,

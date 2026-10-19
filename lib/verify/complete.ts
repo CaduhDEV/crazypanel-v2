@@ -61,23 +61,12 @@ export async function completeVerification(db: Admin, v: Verification): Promise<
     crm ??= await findCrmLeadByPhone(phone).catch(() => null);
   }
 
-  // 3) Lead no painel: telefone + e-mail + empresa (sem trocar uma já vinculada).
-  const { data: contactId } = await db.rpc("upsert_contact", { p_phone: phone, p_lid: null, p_name: v.name });
+  // 3) Empresa (não é o lead: o lead só é criado quando um admin aceita a solicitação).
   const companyId = tenantId ? await companyForTenant(db, tenantId, tenantName) : null;
-  if (contactId) {
-    const { data: contact } = await db.from("contacts").select("email, company_id").eq("id", contactId).maybeSingle();
-    await db
-      .from("contacts")
-      .update({
-        email: (contact?.email as string | null) ?? v.email,
-        ...(companyId && !contact?.company_id ? { company_id: companyId, linked_at: new Date().toISOString(), gleap_status: "linked" } : {}),
-        ...(crm ? { crm_lead_id: crm.id, crm_tax_id: crm.taxId, crm_attendant_name: crm.attendantName, crm_checked_at: new Date().toISOString() } : {}),
-      })
-      .eq("id", contactId);
-    if (companyId && crm?.taxId?.length === 14) {
-      await db.from("companies").update({ cnpj: crm.taxId }).eq("id", companyId).is("cnpj", null);
-    }
+  if (companyId && crm?.taxId?.length === 14) {
+    await db.from("companies").update({ cnpj: crm.taxId }).eq("id", companyId).is("cnpj", null);
   }
+  const contactId: string | null = null;
 
   // 4) Solicitação de entrada, já verificada (a triagem completa o vínculo e confere se já é membro).
   const { data: request } = await db
@@ -92,6 +81,12 @@ export async function completeVerification(db: Admin, v: Verification): Promise<
       email_verified: true,
       phone_verified: true,
       verification_id: v.id,
+      // Vínculo achado agora no Gleap/CRM: a triagem mantém e só completa o que faltar.
+      company_id: companyId,
+      company_name: tenantName,
+      gleap_tenant_id: tenantId,
+      crm_lead_id: crm?.id ?? null,
+      crm_tax_id: crm?.taxId ?? null,
     })
     .select("id")
     .single();

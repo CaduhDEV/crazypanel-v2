@@ -1,7 +1,9 @@
 import { getUazapi } from "@/lib/uazapi/instance";
 import { UazapiError } from "@/lib/uazapi/client";
+import { phoneKey } from "@/lib/gleap";
 import {
   assertCooldown,
+  assertPhoneAvailable,
   assertNotLocked,
   codeHash,
   LIMITS,
@@ -65,6 +67,7 @@ export async function startPhone(db: Admin, v: Verification, rawPhone: unknown) 
   if (v.phone_verified_at) throw new VerifyError("already_verified", "Esse telefone já foi confirmado.");
   const phone = normalizePhone(rawPhone);
   if (!phone) throw new VerifyError("invalid_phone", "Confira o DDD e o número do WhatsApp.");
+  await assertPhoneAvailable(db, phoneKey(phone));
   if (v.phone === phone) assertCooldown(v.phone_last_sent_at);
   return deliver(v, phone, db);
 }

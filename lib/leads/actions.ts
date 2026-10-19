@@ -259,3 +259,37 @@ export async function setPrimaryCompany(input: z.input<typeof primarySchema>): P
     revalidatePath("/leads");
   });
 }
+
+// =============================================================================
+// Excluir lead
+// =============================================================================
+export interface ContactDeletionImpact {
+  tickets: number;
+  messages: number;
+  groups: number;
+}
+
+/** O que vai junto ao excluir o lead (para a confirmação). */
+export async function getContactDeletionImpact(input: z.input<typeof contactIdSchema>): Promise<ActionResult<ContactDeletionImpact>> {
+  return runAction(contactIdSchema, input, async ({ contactId }) => {
+    await requireAdmin();
+    const { data, error } = await createAdminClient().rpc("contact_deletion_impact", { p_contact_id: contactId });
+    if (error) throw error;
+    return data as ContactDeletionImpact;
+  });
+}
+
+/** Exclui o lead e os atendimentos em que ele é o principal. Não dá para desfazer. */
+export async function deleteContact(input: z.input<typeof contactIdSchema>): Promise<ActionResult<ContactDeletionImpact>> {
+  return runAction(contactIdSchema, input, async ({ contactId }) => {
+    await requireAdmin();
+    const { data, error } = await createAdminClient().rpc("delete_contact", { p_contact_id: contactId });
+    if (error) {
+      if (error.code === "P0002") throw new ActionError("Lead não encontrado (talvez já tenha sido excluído).");
+      throw error;
+    }
+    revalidatePath("/leads");
+    revalidatePath("/atendimento");
+    return data as ContactDeletionImpact;
+  });
+}

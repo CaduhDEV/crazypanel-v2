@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   assertCooldown,
+  assertEmailAvailable,
   assertNotLocked,
   EMAIL_RE,
   LIMITS,
@@ -73,6 +74,8 @@ export async function startEmail(db: Admin, input: { name: unknown; email: unkno
   if ((await sendsLastHour(db, "email", email, "email_sent_at")) >= LIMITS.sendsPerHour) {
     throw new VerifyError("rate_limited", "Muitos códigos enviados para esse e-mail. Tente de novo em 1 hora.", 429, 3600);
   }
+
+  await assertEmailAvailable(db, email);
 
   // Clicou de novo (ou voltou e reenviou) logo depois: o código já está a caminho.
   // Reaproveita a verificação em vez de pedir outro e-mail (o Supabase recusa em < 60 s).

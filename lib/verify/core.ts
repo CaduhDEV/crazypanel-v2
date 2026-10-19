@@ -131,3 +131,33 @@ export async function sendsLastHour(db: Admin, field: "email" | "phone", value: 
 
 /** Formata para o Gleap: +55DDDNUMERO. */
 export const e164 = (phone: string) => `+${phone}`;
+
+/** Pedidos que ainda contam como "em andamento" (bloqueiam um novo cadastro igual). */
+const OPEN_REQUEST = ["pending", "accepted", "invited"];
+
+/**
+ * E-mail já cadastrado: lead existente no painel ou pedido em andamento.
+ * O lead só nasce quando um admin aceita a solicitação.
+ */
+export async function assertEmailAvailable(db: Admin, email: string) {
+  const { count: leads } = await db.from("contacts").select("id", { count: "exact", head: true }).ilike("email", email);
+  if (leads) throw new VerifyError("email_registered", "Esse e-mail já está cadastrado na comunidade.", 409);
+  const { count: open } = await db
+    .from("join_requests")
+    .select("id", { count: "exact", head: true })
+    .ilike("email", email)
+    .in("status", OPEN_REQUEST);
+  if (open) throw new VerifyError("email_pending_request", "Já existe um pedido com esse e-mail em análise. Aguarde o retorno pelo WhatsApp.", 409);
+}
+
+/** Telefone já cadastrado: lead existente (com ou sem o 9) ou pedido em andamento. */
+export async function assertPhoneAvailable(db: Admin, key: string) {
+  const { count: leads } = await db.from("contacts").select("id", { count: "exact", head: true }).eq("phone_key", key);
+  if (leads) throw new VerifyError("phone_registered", "Esse número já está cadastrado na comunidade.", 409);
+  const { count: open } = await db
+    .from("join_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("phone_key", key)
+    .in("status", OPEN_REQUEST);
+  if (open) throw new VerifyError("phone_pending_request", "Já existe um pedido com esse número em análise. Aguarde o retorno pelo WhatsApp.", 409);
+}

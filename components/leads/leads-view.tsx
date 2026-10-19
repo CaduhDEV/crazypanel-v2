@@ -312,7 +312,7 @@ export function LeadsView({
       )}
 
       <LinkContactDialog target={linkTarget} onClose={() => setLinkTarget(null)} onSaved={() => router.refresh()} />
-      <LeadProfileDialog contactId={profileId} onClose={() => setProfileId(null)} />
+      <LeadProfileDialog contactId={profileId} onClose={() => setProfileId(null)} onDeleted={() => router.refresh()} />
     </main>
   );
 }
