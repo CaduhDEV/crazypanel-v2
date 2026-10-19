@@ -243,15 +243,22 @@ function RankItem({ row: r, position, max }: { row: RankRow; position: number; m
   );
 }
 
+/** Relógio só no navegador: no servidor a hora seria outra e quebraria a hidratação. */
 function useClock() {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const tick = () => setNow(new Date());
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, []);
+  if (!now) return { time: "--:--:--", date: " " };
   return {
-    time: now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-    date: now.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" }),
+    time: now.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    date: now.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long", day: "2-digit", month: "long" }),
   };
 }
 

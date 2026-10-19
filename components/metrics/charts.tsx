@@ -168,10 +168,11 @@ export function TodayChart({ hoje, className }: { hoje: LiveReport["hoje"]; clas
     mensagens: { label: "Mensagens", color: COLORS.equipe },
     threads: { label: "Threads", color: COLORS.comunidade },
   } satisfies ChartConfig;
-  const now = new Date().getHours();
+  // Até a última hora com movimento (igual no servidor e no navegador, sem depender do relógio).
+  const lastActive = hoje.reduce((m, h) => (h.threads || h.mensagens ? Math.max(m, h.hora) : m), 0);
   return (
     <ChartContainer config={config} className={cn("aspect-auto h-full w-full", className)}>
-      <AreaChart data={hoje.filter((h) => h.hora <= Math.max(now, 8))} margin={{ left: -18, right: 8, top: 8 }}>
+      <AreaChart data={hoje.filter((h) => h.hora <= Math.max(lastActive + 1, 8))} margin={{ left: -18, right: 8, top: 8 }}>
         <defs>
           <linearGradient id="fill-today" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="var(--color-mensagens)" stopOpacity={0.5} />
