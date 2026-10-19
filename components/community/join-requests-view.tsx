@@ -16,6 +16,8 @@ import { EmptyState, Skeleton, Tip } from "@/components/ui/misc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { communityEventText } from "@/components/community/event-text";
+import { CompanyDialog } from "@/components/companies/company-dialog";
+import type { CompanyRow } from "@/components/companies/companies-view";
 
 export type JoinTab = "pendentes" | "convidados" | "aceitos" | "recusados" | "todos";
 
@@ -31,6 +33,7 @@ export interface JoinRequestItem {
   phone_verified?: boolean;
   group_jid: string | null;
   link_status: "found" | "not_found" | "error" | null;
+  company_id: string | null;
   company_name: string | null;
   gleap_tenant_id: string | null;
   crm_lead_id: string | null;
@@ -99,6 +102,7 @@ export function JoinRequestsView({
   const [accepting, setAccepting] = useState<JoinRequestItem | null>(null);
   const [rejecting, setRejecting] = useState<JoinRequestItem | null>(null);
   const [timeline, setTimeline] = useState<JoinRequestItem | null>(null);
+  const [companyOf, setCompanyOf] = useState<JoinRequestItem | null>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
 
   const update = (patch: Record<string, string | null>) => {
@@ -278,7 +282,7 @@ export function JoinRequestsView({
                   </span>
                 </td>
                 <td className="px-4 py-2.5">
-                  <LinkCell r={r} />
+                  <LinkCell r={r} onOpenCompany={setCompanyOf} />
                 </td>
                 <td className="px-4 py-2.5 text-muted-foreground">{formatRelative(r.created_at)}</td>
                 <td className="px-4 py-2.5">
@@ -343,29 +347,85 @@ export function JoinRequestsView({
       {accepting && <AcceptDialog request={accepting} onClose={() => setAccepting(null)} onDone={() => router.refresh()} />}
       {rejecting && <RejectDialog request={rejecting} onClose={() => setRejecting(null)} onDone={() => router.refresh()} />}
       {timeline && <TimelineDialog request={timeline} onClose={() => setTimeline(null)} />}
+      {companyOf && <CompanyFromRequest request={companyOf} onClose={() => setCompanyOf(null)} />}
     </main>
   );
 }
 
-function LinkCell({ r }: { r: JoinRequestItem }) {
+function LinkCell({ r, onOpenCompany }: { r: JoinRequestItem; onOpenCompany: (r: JoinRequestItem) => void }) {
   if (r.link_status === "not_found") return <Badge variant="warning">Empresa não encontrada</Badge>;
   if (r.link_status === "error") return <Badge variant="destructive">Falha ao buscar</Badge>;
   if (!r.link_status) return <span className="text-muted-foreground">Buscando…</span>;
+
   const name = r.company?.name ?? r.company_name;
-  const cnpj = r.company?.cnpj ?? (r.crm_tax_id?.length === 14 ? r.crm_tax_id : null);
+  const tenant = r.company?.external_id ?? r.gleap_tenant_id;
+  const taxId = r.company?.cnpj ?? r.crm_tax_id;
+  const doc = taxId ? `${taxId.length === 11 ? "CPF" : "CNPJ"} ${formatTaxId(taxId)}` : null;
+
+  // Só o CRM achou a pessoa: sem empresa/tenant no Gleap, não há painel de empresa para abrir.
+  if (!name && !tenant) {
+    return (
+      <Tip label="A pessoa existe no CRM DataCrazy, mas o e-mail e o telefone não têm empresa (tenant) no Gleap.">
+        <span className="flex flex-col">
+          <span className="flex items-center gap-1.5">
+            <Badge variant="outline">Só no CRM</Badge>
+          </span>
+          {doc && <span className="pt-0.5 font-mono text-[11px] text-muted-foreground">{doc}</span>}
+        </span>
+      </Tip>
+    );
+  }
+
   return (
-    <span className="flex flex-col">
-      <span className="flex items-center gap-1.5">
+    <button
+      type="button"
+      onClick={() => onOpenCompany(r)}
+      className="flex w-full min-w-0 flex-col rounded-md text-left hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none"
+      title="Abrir o painel da empresa"
+    >
+      <span className="flex min-w-0 items-center gap-1.5">
         <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="max-w-52 truncate font-medium">{name ?? "Vínculo encontrado"}</span>
+        <span className="truncate font-medium underline-offset-2 hover:underline">{name ?? "Empresa sem nome"}</span>
       </span>
+      {tenant && <span className="truncate pt-0.5 font-mono text-[11px] text-muted-foreground">{tenant}</span>}
       <span className="flex flex-wrap gap-1 pt-0.5">
         {r.gleap_tenant_id && <Badge variant="outline">Gleap</Badge>}
         {r.crm_lead_id && <Badge variant="outline">CRM</Badge>}
-        {cnpj && <span className="font-mono text-[11px] text-muted-foreground">{formatTaxId(cnpj)}</span>}
       </span>
-    </span>
+    </button>
   );
+}
+
+/** Abre o painel da empresa (mesmo modal da página Empresas) a partir da solicitação. */
+function CompanyFromRequest({ request: r, onClose }: { request: JoinRequestItem; onClose: () => void }) {
+  const tenant = r.company?.external_id ?? r.gleap_tenant_id;
+  const { data, isLoading } = useQuery({
+    queryKey: ["b2b-company", tenant, r.company_id],
+    queryFn: async () => {
+      const supabase = createClient();
+      let q = supabase.from("b2b_companies").select("*").limit(1);
+      q = tenant ? q.eq("tenant_id", tenant) : q.eq("company_id", r.company_id!);
+      const { data, error } = await q.maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as CompanyRow | null;
+    },
+  });
+  if (isLoading) return null;
+  const row: CompanyRow = data ?? {
+    tenant_id: tenant ?? null,
+    company_id: r.company_id,
+    name: r.company?.name ?? r.company_name ?? "Empresa",
+    cnpj: r.company?.cnpj ?? null,
+    image_url: null,
+    niche: null,
+    email: null,
+    users_count: 0,
+    users_with_phone: 0,
+    users_in_community: 0,
+    leads_count: 0,
+    last_activity_at: null,
+  };
+  return <CompanyDialog company={row} onClose={onClose} />;
 }
 
 function AcceptDialog({ request: r, onClose, onDone }: { request: JoinRequestItem; onClose: () => void; onDone: () => void }) {
