@@ -32,7 +32,7 @@ const WA_ERROR: Record<number, string> = {
   401: "o número bloqueou o WhatsApp da comunidade",
   403: "a privacidade da pessoa não permite ser adicionada",
   408: "a pessoa saiu do grupo há pouco",
-  409: "a pessoa já está no grupo",
+  409: "o WhatsApp recusou; confira se o número da comunidade é admin do grupo",
   500: "o grupo está cheio",
 };
 

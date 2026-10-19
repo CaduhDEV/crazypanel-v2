@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Check, ChevronLeft, ChevronRight, ClipboardList, History, Loader2, RefreshCw, Search, Smartphone, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
-import { acceptJoinRequest, getCommunityOccupancy, refreshJoinRequests, rejectJoinRequest } from "@/lib/community/actions";
+import { acceptJoinRequest, getCommunityOccupancy, refreshJoinRequests, rejectJoinRequest, type CommunityGroupOccupancy } from "@/lib/community/actions";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +104,8 @@ export function JoinRequestsView({
   const [timeline, setTimeline] = useState<JoinRequestItem | null>(null);
   const [companyOf, setCompanyOf] = useState<JoinRequestItem | null>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
+  const { data: occupancy } = useOccupancy();
+  const queryClient = useQueryClient();
 
   const update = (patch: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams);
@@ -124,6 +126,8 @@ export function JoinRequestsView({
 
   const syncWhatsApp = (force: boolean) =>
     startSync(async () => {
+      // No "Atualizar" manual, confere de novo os grupos (ex.: acabou de promover o número a admin).
+      if (force) void queryClient.invalidateQueries({ queryKey: ["community-occupancy"] });
       const res = await refreshJoinRequests({ force });
       if (!res.ok) {
         if (force) toast.error(res.error);
@@ -299,16 +303,7 @@ export function JoinRequestsView({
                         <History />
                       </Button>
                     </Tip>
-                    {decidable(r.status) && (
-                      <>
-                        <Button variant="outline" size="sm" onClick={() => setRejecting(r)}>
-                          <X /> Recusar
-                        </Button>
-                        <Button size="sm" onClick={() => setAccepting(r)}>
-                          <Check /> Aceitar
-                        </Button>
-                      </>
-                    )}
+                    {decidable(r.status) && <DecideButtons r={r} groups={occupancy} onReject={() => setRejecting(r)} onAccept={() => setAccepting(r)} />}
                   </span>
                 </td>
               </tr>
@@ -428,19 +423,74 @@ function CompanyFromRequest({ request: r, onClose }: { request: JoinRequestItem;
   return <CompanyDialog company={row} onClose={onClose} />;
 }
 
-function AcceptDialog({ request: r, onClose, onDone }: { request: JoinRequestItem; onClose: () => void; onDone: () => void }) {
-  const [pending, start] = useTransition();
-  const [selected, setSelected] = useState<string[] | null>(null);
-  const { data: groups, isLoading } = useQuery({
+/** Ocupação dos grupos e se o número da comunidade é admin de cada um (cache compartilhado entre a lista e o aceite). */
+function useOccupancy() {
+  return useQuery({
     queryKey: ["community-occupancy"],
+    staleTime: 60_000,
     queryFn: async () => {
       const res = await getCommunityOccupancy();
       if (!res.ok) throw new Error(res.error);
       return res.data;
     },
   });
-  // Pré-seleção: o primeiro grupo com vaga (só no formulário).
-  const chosen = selected ?? (r.source === "form" && groups ? groups.filter((g) => !g.full).slice(0, 1).map((g) => g.jid) : []);
+}
+
+const NOT_ADMIN = "não é admin";
+
+/** Por que não dá para aceitar/recusar agora (o número da comunidade precisa ser admin do grupo). */
+function blockedReason(r: JoinRequestItem, groups: CommunityGroupOccupancy[] | undefined): string | null {
+  if (!groups) return null;
+  if (r.source === "whatsapp") {
+    const g = groups.find((x) => x.jid === r.group_jid);
+    return g?.botIsAdmin === false ? `O número da comunidade ${NOT_ADMIN} do grupo ${g.name}. Promova-o a admin no WhatsApp para aceitar ou recusar.` : null;
+  }
+  return groups.length && groups.every((g) => g.botIsAdmin === false)
+    ? `O número da comunidade ${NOT_ADMIN} de nenhum grupo da comunidade. Promova-o a admin no WhatsApp para aceitar.`
+    : null;
+}
+
+function DecideButtons({ r, groups, onReject, onAccept }: { r: JoinRequestItem; groups: CommunityGroupOccupancy[] | undefined; onReject: () => void; onAccept: () => void }) {
+  const blocked = blockedReason(r, groups);
+  // Recusar um pedido do formulário não mexe em grupo (só avisa no privado): só os do WhatsApp dependem de admin.
+  const rejectBlocked = r.source === "whatsapp" ? blocked : null;
+  const reject = (
+    <Button variant="outline" size="sm" onClick={onReject} disabled={!!rejectBlocked}>
+      <X /> Recusar
+    </Button>
+  );
+  const accept = (
+    <Button size="sm" onClick={onAccept} disabled={!!blocked}>
+      <Check /> Aceitar
+    </Button>
+  );
+  return (
+    <>
+      {rejectBlocked ? (
+        <Tip label={rejectBlocked}>
+          <span>{reject}</span>
+        </Tip>
+      ) : (
+        reject
+      )}
+      {blocked ? (
+        <Tip label={blocked}>
+          <span>{accept}</span>
+        </Tip>
+      ) : (
+        accept
+      )}
+    </>
+  );
+}
+
+function AcceptDialog({ request: r, onClose, onDone }: { request: JoinRequestItem; onClose: () => void; onDone: () => void }) {
+  const [pending, start] = useTransition();
+  const [selected, setSelected] = useState<string[] | null>(null);
+  const { data: groups, isLoading } = useOccupancy();
+  const usable = (g: CommunityGroupOccupancy) => !g.full && g.botIsAdmin !== false;
+  // Pré-seleção: o primeiro grupo com vaga e onde o número da comunidade é admin (só no formulário).
+  const chosen = selected ?? (r.source === "form" && groups ? groups.filter(usable).slice(0, 1).map((g) => g.jid) : []);
   const requested = r.source === "whatsapp" ? groups?.find((g) => g.jid === r.group_jid) : null;
 
   const accept = () =>
@@ -482,18 +532,23 @@ function AcceptDialog({ request: r, onClose, onDone }: { request: JoinRequestIte
           <ul className="flex flex-col gap-1.5">
             {(groups ?? []).map((g) => {
               const on = chosen.includes(g.jid);
+              const notAdmin = g.botIsAdmin === false;
+              const line = (
+                <label className={cn("flex cursor-pointer items-center gap-3 rounded-md border p-2.5", on ? "border-primary/50 bg-primary-soft/50" : "border-border", !usable(g) && "cursor-not-allowed opacity-60")}>
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[var(--primary)]"
+                    checked={on}
+                    disabled={!usable(g)}
+                    onChange={(e) => setSelected(e.target.checked ? [...chosen, g.jid] : chosen.filter((j) => j !== g.jid))}
+                  />
+                  <GroupLine name={g.name} members={g.members} full={g.full} />
+                  {notAdmin && <span className="ml-auto shrink-0 text-xs text-warning">Sem admin</span>}
+                </label>
+              );
               return (
                 <li key={g.jid}>
-                  <label className={cn("flex cursor-pointer items-center gap-3 rounded-md border p-2.5", on ? "border-primary/50 bg-primary-soft/50" : "border-border", g.full && "cursor-not-allowed opacity-60")}>
-                    <input
-                      type="checkbox"
-                      className="size-4 accent-[var(--primary)]"
-                      checked={on}
-                      disabled={g.full}
-                      onChange={(e) => setSelected(e.target.checked ? [...chosen, g.jid] : chosen.filter((j) => j !== g.jid))}
-                    />
-                    <GroupLine name={g.name} members={g.members} full={g.full} />
-                  </label>
+                  {notAdmin ? <Tip label={`O número da comunidade ${NOT_ADMIN} desse grupo. Promova-o a admin no WhatsApp para adicionar pessoas.`}>{line}</Tip> : line}
                 </li>
               );
             })}
@@ -505,7 +560,7 @@ function AcceptDialog({ request: r, onClose, onDone }: { request: JoinRequestIte
           <Button variant="outline" onClick={onClose} disabled={pending}>
             Cancelar
           </Button>
-          <Button onClick={accept} disabled={pending || isLoading || (r.source === "form" ? chosen.length === 0 : !!requested?.full)}>
+          <Button onClick={accept} disabled={pending || isLoading || (r.source === "form" ? chosen.length === 0 : !!requested?.full || requested?.botIsAdmin === false)}>
             {pending && <Loader2 className="animate-spin" />} Aceitar
           </Button>
         </DialogFooter>

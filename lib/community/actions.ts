@@ -6,7 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/session";
 import { ActionError, runAction, type ActionResult } from "@/lib/action";
 import { getSettings } from "@/lib/settings";
-import { getUazapi } from "@/lib/uazapi/instance";
+import { getInstanceRow, getUazapi } from "@/lib/uazapi/instance";
+import { phoneKey } from "@/lib/gleap";
 import { UazapiError, type UazapiClient } from "@/lib/uazapi/client";
 import {
   communityGroups,
@@ -64,6 +65,41 @@ async function occupancy(db: Admin, uaz: UazapiClient, jid: string): Promise<num
   return (data?.member_count as number | null) ?? null;
 }
 
+interface GroupCheck {
+  members: number | null;
+  /** null: não deu para conferir (a uazapi não respondeu). */
+  botIsAdmin: boolean | null;
+  alreadyIn: boolean;
+}
+
+const participantKey = (p?: string) => (p ? phoneKey(p.split("@")[0]) : "");
+
+/** Vagas, se o número da comunidade é admin e se a pessoa (opcional) já está no grupo. */
+async function checkGroup(
+  db: Admin,
+  uaz: UazapiClient,
+  jid: string,
+  botPhone: string | null,
+  req?: Pick<JoinRequestRow, "phone" | "lid">,
+): Promise<GroupCheck> {
+  try {
+    const info = await uaz.groupInfo(jid);
+    const people = info.Participants ?? [];
+    const bot = botPhone ? people.find((p) => participantKey(p.PhoneNumber) === phoneKey(botPhone)) : undefined;
+    const reqKey = req?.phone ? phoneKey(req.phone) : null;
+    const alreadyIn = people.some(
+      (p) => (reqKey && participantKey(p.PhoneNumber) === reqKey) || (req?.lid && [p.LID, p.JID].some((j) => j?.split("@")[0] === req.lid)),
+    );
+    return {
+      members: typeof info.ParticipantCount === "number" ? info.ParticipantCount : people.length || null,
+      botIsAdmin: bot ? !!(bot.IsAdmin || bot.IsSuperAdmin) : botPhone && people.length ? false : null,
+      alreadyIn,
+    };
+  } catch {
+    return { members: await occupancy(db, uaz, jid), botIsAdmin: null, alreadyIn: false };
+  }
+}
+
 // =============================================================================
 // Leitura
 // =============================================================================
@@ -73,19 +109,22 @@ export interface CommunityGroupOccupancy {
   members: number | null;
   capacity: number;
   full: boolean;
+  /** O número da comunidade é admin do grupo? null: não deu para conferir. */
+  botIsAdmin: boolean | null;
 }
 
-/** Grupos da comunidade com a ocupação atual (diálogo de aceite). */
+/** Grupos da comunidade com a ocupação atual e se o número da comunidade é admin (aceite/recusa). */
 export async function getCommunityOccupancy(): Promise<ActionResult<CommunityGroupOccupancy[]>> {
   return runAction(z.object({}), {}, async () => {
     await requireAdmin();
     const db = createAdminClient();
     const uaz = await getUazapi();
     const groups = await communityGroups(db);
+    const botPhone = (await getInstanceRow()).phone;
     return Promise.all(
       groups.map(async (g) => {
-        const members = await occupancy(db, uaz, g.jid);
-        return { ...g, members, capacity: GROUP_CAPACITY, full: members !== null && members >= GROUP_CAPACITY };
+        const { members, botIsAdmin } = await checkGroup(db, uaz, g.jid, botPhone);
+        return { ...g, members, capacity: GROUP_CAPACITY, full: members !== null && members >= GROUP_CAPACITY, botIsAdmin };
       }),
     );
   });
@@ -130,10 +169,17 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
     const targets = req.source === "whatsapp" ? [req.group_jid!].filter(Boolean) : groupJids;
     if (!targets.length) throw new ActionError("Escolha ao menos um grupo.");
 
-    // Vagas.
+    // Confere cada grupo antes de mexer em qualquer um.
+    const botPhone = (await getInstanceRow()).phone;
+    const checks = new Map<string, GroupCheck>();
     for (const jid of targets) {
-      const members = await occupancy(db, uaz, jid);
-      if (members !== null && members >= GROUP_CAPACITY) throw new ActionError(`O grupo ${groups.get(jid) ?? jid} está cheio (${members}/${GROUP_CAPACITY}).`);
+      const name = groups.get(jid) ?? jid;
+      const c = await checkGroup(db, uaz, jid, botPhone, req);
+      if (c.botIsAdmin === false) {
+        throw new ActionError(`O número da comunidade não é admin do grupo ${name}. Promova-o a admin no WhatsApp e tente de novo.`);
+      }
+      if (!c.alreadyIn && c.members !== null && c.members >= GROUP_CAPACITY) throw new ActionError(`O grupo ${name} está cheio (${c.members}/${GROUP_CAPACITY}).`);
+      checks.set(jid, c);
     }
 
     const added: string[] = [];
@@ -142,17 +188,16 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
     const failed: string[] = [];
     for (const jid of targets) {
       const groupName = groups.get(jid) ?? jid;
+      if (checks.get(jid)?.alreadyIn) {
+        already.push(jid);
+        continue;
+      }
       try {
         const action = req.source === "whatsapp" ? "approve" : "add";
         const res = await uaz.updateParticipants(jid, action, [who]);
         const r = res.groupUpdated?.[0];
         if (!r || !r.Error) {
           added.push(jid);
-          continue;
-        }
-        // 409: já é participante (ex.: entrou por link, ou o número está sem o 9º dígito no WhatsApp).
-        if (r.Error === 409) {
-          already.push(jid);
           continue;
         }
         if (action === "add" && r.Error === 403) {
