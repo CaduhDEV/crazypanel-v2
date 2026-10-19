@@ -266,7 +266,7 @@ export function JoinRequestsView({
                     {r.source === "form" ? <ClipboardList className="size-3.5 text-muted-foreground" /> : <Smartphone className="size-3.5 text-muted-foreground" />}
                     <span className="flex flex-col">
                       <span className="flex items-center gap-1.5">
-                        {r.source === "form" ? (r.form_source === "crazypanel-form" ? "Formulário verificado" : "Formulário") : "WhatsApp"}
+                        {r.source === "form" ? (r.form_source === "crazypanel-form" ? "Formulário" : "Formulário") : "WhatsApp"}
                         {r.email_verified && r.phone_verified && (
                           <Tip label="E-mail e telefone confirmados por código">
                             <span>

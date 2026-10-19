@@ -33,17 +33,14 @@ export async function completeVerification(db: Admin, v: Verification): Promise<
   let tenantId: string | null = null;
   let tenantName: string | null = null;
   let sessionsUpdated = 0;
-  if (gleapConfigured()) {
+  const gleapStep = async () => {
+    if (!gleapConfigured()) return;
     try {
       const sessions = await findGleapSessionsByEmail(v.email);
-      for (const s of sessions) {
-        try {
-          await updateGleapSessionPhone(s.id, e164(phone));
-          sessionsUpdated += 1;
-        } catch (e) {
-          notes.gleap_update_error = e instanceof Error ? e.message : String(e);
-        }
-      }
+      const updates = await Promise.allSettled(sessions.map((s) => updateGleapSessionPhone(s.id, e164(phone))));
+      sessionsUpdated = updates.filter((u) => u.status === "fulfilled").length;
+      const failed = updates.find((u): u is PromiseRejectedResult => u.status === "rejected");
+      if (failed) notes.gleap_update_error = failed.reason instanceof Error ? failed.reason.message : String(failed.reason);
       const withCompany = sessions.find((s) => s.companyId);
       tenantId = withCompany?.companyId ?? null;
       tenantName = withCompany?.companyName ?? null;
@@ -52,14 +49,16 @@ export async function completeVerification(db: Admin, v: Verification): Promise<
     } catch (e) {
       notes.gleap_error = e instanceof Error ? e.message : String(e);
     }
-  }
+  };
 
   // 2) CRM DataCrazy: pelo e-mail e, se não achar, pelo telefone.
-  let crm: Awaited<ReturnType<typeof findCrmLeadByEmail>> = null;
-  if (crmConfigured()) {
-    crm = await findCrmLeadByEmail(v.email).catch(() => null);
-    crm ??= await findCrmLeadByPhone(phone).catch(() => null);
-  }
+  const crmStep = async () => {
+    if (!crmConfigured()) return null;
+    return (await findCrmLeadByEmail(v.email).catch(() => null)) ?? (await findCrmLeadByPhone(phone).catch(() => null));
+  };
+
+  // Os dois ao mesmo tempo: a pessoa está esperando na tela.
+  const [, crm] = await Promise.all([gleapStep(), crmStep()]);
 
   // 3) Empresa (não é o lead: o lead só é criado quando um admin aceita a solicitação).
   const companyId = tenantId ? await companyForTenant(db, tenantId, tenantName) : null;
