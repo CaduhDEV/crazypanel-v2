@@ -27,7 +27,7 @@ import { useNow } from "@/components/app/use-now";
 import { TicketCard } from "@/components/inbox/ticket-card";
 import { Workspace } from "@/components/conversation/workspace";
 
-type Tab = "all" | "mine" | "unassigned" | "breach";
+type Tab = "unassigned" | "mine" | "assigned" | "breach" | "all";
 
 const ALL_GROUPS = "__all__";
 
@@ -40,7 +40,7 @@ export function InboxView() {
   const openTicketId = searchParams.get("ticket");
   const now = useNow();
 
-  const [tab, setTab] = useState<Tab>("all");
+  const [tab, setTab] = useState<Tab>("unassigned");
   const [group, setGroup] = useState(ALL_GROUPS);
   const [search, setSearch] = useState("");
   const [claiming, startClaim] = useTransition();
@@ -75,12 +75,21 @@ export function InboxView() {
     all: scoped.length,
     mine: scoped.filter((t) => t.assignee_id === profile.id).length,
     unassigned: scoped.filter((t) => !t.assignee_id).length,
+    assigned: scoped.filter((t) => !!t.assignee_id).length,
     breach: scoped.filter(isBreach).length,
   };
 
   const visible = scoped
     .filter((t) =>
-      tab === "mine" ? t.assignee_id === profile.id : tab === "unassigned" ? !t.assignee_id : tab === "breach" ? isBreach(t) : true,
+      tab === "mine"
+        ? t.assignee_id === profile.id
+        : tab === "unassigned"
+          ? !t.assignee_id
+          : tab === "assigned"
+            ? !!t.assignee_id
+            : tab === "breach"
+              ? isBreach(t)
+              : true,
     )
     .sort(compareQueue);
 
@@ -93,10 +102,11 @@ export function InboxView() {
     });
 
   const TABS: { value: Tab; label: string; tone?: string }[] = [
-    { value: "all", label: "Todos" },
-    { value: "mine", label: "Meus" },
     { value: "unassigned", label: "Sem responsável" },
+    { value: "mine", label: "Meus" },
+    { value: "assigned", label: "Em atendimento" },
     { value: "breach", label: "SLA estourado", tone: "text-destructive" },
+    { value: "all", label: "Todos" },
   ];
 
   return (
@@ -200,10 +210,10 @@ export function InboxView() {
           />
         ) : visible.length === 0 ? (
           <EmptyState
-            icon={tab === "all" && !search ? Sparkles : Inbox}
-            title={tab === "all" && !search ? "Fila zerada" : "Nada por aqui"}
+            icon={counts.all === 0 && !search ? Sparkles : Inbox}
+            title={counts.all === 0 && !search ? "Fila zerada" : "Nada por aqui"}
             description={
-              tab === "all" && !search
+              counts.all === 0 && !search
                 ? "Nenhum atendimento aberto."
                 : "Nenhum atendimento corresponde a este filtro."
             }
