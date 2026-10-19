@@ -7,6 +7,7 @@ import {
   BarChart3,
   Building2,
   ChevronsLeft,
+  DoorOpen,
   Contact,
   History,
   Inbox,
@@ -27,13 +28,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useApp } from "@/components/app/app-context";
 import { useOpenTickets } from "@/components/app/use-open-tickets";
+import { usePendingJoinRequests } from "@/components/community/use-pending-join-requests";
 import { UserMenu } from "@/components/app/user-menu";
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  badge?: "open-tickets";
+  badge?: "open-tickets" | "join-requests";
   soon?: boolean;
 }
 
@@ -50,6 +52,7 @@ const SECTIONS: NavSection[] = [
     adminOnly: true,
     items: [
       { href: "/leads", label: "Leads", icon: Contact },
+      { href: "/solicitacoes", label: "Solicitações", icon: DoorOpen, badge: "join-requests" },
       { href: "/empresas", label: "Empresas", icon: Building2 },
       { href: "/convites", label: "Prospectos", icon: UserPlus },
       { href: "/historico", label: "Histórico", icon: History },
@@ -145,6 +148,7 @@ function NavLinks({ collapsed }: { collapsed: boolean }) {
   const { isAdmin } = useApp();
   const { data: tickets } = useOpenTickets();
   const openCount = tickets?.length ?? 0;
+  const { data: pendingJoins = 0 } = usePendingJoinRequests(isAdmin);
 
   return (
     <nav className="scroll-thin flex flex-1 flex-col gap-5 overflow-y-auto px-2 py-4">
@@ -157,7 +161,7 @@ function NavLinks({ collapsed }: { collapsed: boolean }) {
           )}
           {section.items.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const count = item.badge === "open-tickets" ? openCount : 0;
+            const count = item.badge === "open-tickets" ? openCount : item.badge === "join-requests" ? pendingJoins : 0;
             const content = (
               <>
                 <item.icon className="size-[18px] shrink-0" />

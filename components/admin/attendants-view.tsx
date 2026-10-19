@@ -45,14 +45,14 @@ export function AttendantsView({ rows, currentUserId }: { rows: AttendantRow[]; 
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="data-table">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="px-4 py-2.5 font-semibold">Pessoa</th>
-              <th className="px-4 py-2.5 font-semibold">Papel</th>
-              <th className="px-4 py-2.5 font-semibold">Situação</th>
-              <th className="px-4 py-2.5 text-right font-semibold">Atendimentos abertos</th>
-              <th className="px-4 py-2.5" />
+              <th className="px-4 py-2.5 font-semibold w-[32%]">Pessoa</th>
+              <th className="px-4 py-2.5 font-semibold w-[16%]">Papel</th>
+              <th className="px-4 py-2.5 font-semibold w-[18%]">Situação</th>
+              <th className="px-4 py-2.5 text-right font-semibold w-[16%]">Atendimentos abertos</th>
+              <th className="px-4 py-2.5 w-[18%]" />
             </tr>
           </thead>
           <tbody>

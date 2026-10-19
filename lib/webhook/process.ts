@@ -318,8 +318,16 @@ async function handleGroups(db: Admin, payload: Payload) {
     await db.from("wa_groups").update({ name: nameObj.Name }).eq("jid", jid);
   }
 
-  for (const entry of asList(event.Join)) {
-    const { phone, lid } = splitIdentity(...entry);
+  // Quem fez a ação (admin que adicionou/removeu, membro que convidou, ou a própria pessoa).
+  const actor = splitIdentity(
+    typeof event.SenderPN === "string" ? event.SenderPN : null,
+    typeof event.Sender === "string" ? event.Sender : null,
+  );
+  const actorName = typeof event.Notify === "string" && event.Notify ? event.Notify : null;
+  const joinLids = asList(event.JoinLid);
+
+  for (const [i, entry] of asList(event.Join).entries()) {
+    const { phone, lid } = splitIdentity(...entry, ...(joinLids[i] ?? []));
     if (!phone && !lid) continue;
     const { data: contactId } = await db.rpc("upsert_contact", { p_phone: phone, p_lid: lid, p_name: null });
     if (contactId) {
@@ -327,6 +335,7 @@ async function handleGroups(db: Admin, payload: Payload) {
         .from("group_members")
         .upsert({ group_jid: jid, contact_id: contactId, left_at: null }, { onConflict: "group_jid,contact_id" });
     }
+    await logMembership(db, "join", jid, { phone, lid, contactId: (contactId as string | null) ?? null }, actor, actorName);
   }
 
   for (const entry of asList(event.Leave)) {
@@ -337,6 +346,67 @@ async function handleGroups(db: Admin, payload: Payload) {
     for (const c of contacts ?? []) {
       await db.from("group_members").update({ left_at: new Date().toISOString() }).eq("group_jid", jid).eq("contact_id", c.id);
     }
+    await logMembership(db, "leave", jid, { phone, lid, contactId: (contacts?.[0]?.id as string | undefined) ?? null }, actor, actorName);
+  }
+}
+
+/**
+ * Log da comunidade para cada entrada/saída, classificada por quem fez a ação:
+ * a própria pessoa (entrou pelo link/aprovação, ou saiu), um admin do grupo ou a
+ * conta do painel (adicionou/removeu) ou outro membro (convidou).
+ */
+async function logMembership(
+  db: Admin,
+  kind: "join" | "leave",
+  groupJid: string,
+  person: { phone: string | null; lid: string | null; contactId: string | null },
+  actor: { phone: string | null; lid: string | null },
+  actorName: string | null,
+) {
+  try {
+    const self =
+      (!!person.phone && person.phone === actor.phone) || (!!person.lid && person.lid === actor.lid) || (!actor.phone && !actor.lid);
+
+    let type: "joined_via_link" | "added_by_admin" | "invited_by_member" | "left" | "removed";
+    if (kind === "leave") type = self ? "left" : "removed";
+    else if (self) type = "joined_via_link";
+    else {
+      const { data: instance } = await db.from("whatsapp_instance").select("phone").eq("id", 1).maybeSingle();
+      const isPanel = !!actor.phone && actor.phone === (instance?.phone as string | null);
+      const filters = [actor.phone && `phone.eq.${actor.phone}`, actor.lid && `lid.eq.${actor.lid}`].filter(Boolean).join(",");
+      const { data: actorContact } = filters ? await db.from("contacts").select("id").or(filters).limit(1).maybeSingle() : { data: null };
+      const { data: membership } = actorContact
+        ? await db.from("group_members").select("is_admin").eq("group_jid", groupJid).eq("contact_id", actorContact.id).maybeSingle()
+        : { data: null };
+      type = isPanel || membership?.is_admin ? "added_by_admin" : "invited_by_member";
+    }
+
+    // Entrou: a solicitação dele (aceita, convidada ou pendente) está resolvida.
+    let requestId: string | null = null;
+    if (kind === "join" && person.phone) {
+      const { data: reqs } = await db
+        .from("join_requests")
+        .update({ status: "joined" })
+        .eq("phone", person.phone)
+        .in("status", ["pending", "accepted", "invited"])
+        .select("id");
+      requestId = (reqs?.[0]?.id as string | undefined) ?? null;
+    }
+
+    const { error } = await db.from("community_events").insert({
+      type,
+      group_jid: groupJid,
+      contact_id: person.contactId,
+      phone: person.phone,
+      actor_phone: self ? null : actor.phone,
+      actor_name: self ? null : actorName,
+      request_id: requestId,
+      data: { lid: person.lid },
+    });
+    // Antes da migration da comunidade a tabela não existe: só registra no console.
+    if (error) console.error("[webhook] log da comunidade:", error.message);
+  } catch (e) {
+    console.error("[webhook] log da comunidade:", e);
   }
 }
 

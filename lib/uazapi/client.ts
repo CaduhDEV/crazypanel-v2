@@ -79,6 +79,19 @@ export interface UazGroup {
   Participants?: UazGroupParticipant[] | null;
   image_url?: string;
   image_preview_url?: string;
+  IsJoinApprovalRequired?: boolean;
+  /** Pedidos de entrada pendentes, separados por vírgula (só para admin, com getRequestsParticipants). */
+  request_participants?: string;
+  request_participants_lid?: string;
+}
+
+export type UazParticipantAction = "add" | "remove" | "approve" | "reject" | "promote" | "demote";
+
+export interface UazParticipantResult {
+  JID?: string;
+  /** 0 = sucesso; 403 = a privacidade da pessoa bloqueou (vem com AddRequest). */
+  Error?: number;
+  AddRequest?: { Code?: string; Expiration?: string } | null;
 }
 
 export interface UazPagination {
@@ -209,8 +222,18 @@ export class UazapiClient {
     );
   }
 
-  groupInfo(groupjid: string) {
-    return this.request<UazGroup>("POST", "/group/info", { groupjid }, { retryOn429: true, timeoutMs: 40_000 });
+  groupInfo(groupjid: string, opts: { getRequestsParticipants?: boolean } = {}) {
+    return this.request<UazGroup>("POST", "/group/info", { groupjid, ...opts }, { retryOn429: true, timeoutMs: 40_000 });
+  }
+
+  /** Adiciona, remove, aprova ou recusa pedidos de entrada (exige ser admin do grupo). */
+  updateParticipants(groupjid: string, action: UazParticipantAction, participants: string[]) {
+    return this.request<{ groupUpdated?: UazParticipantResult[] }>("POST", "/group/updateParticipants", { groupjid, action, participants }, { timeoutMs: 40_000 });
+  }
+
+  /** Link https://chat.whatsapp.com/<código> do grupo. */
+  groupInviteLink(groupjid: string) {
+    return this.request<{ InviteLink?: string; inviteLink?: string; link?: string }>("GET", `/group/invitelink/${encodeURIComponent(groupjid)}`, undefined, { retryOn429: true });
   }
 
   // --- Contatos ----------------------------------------------------------------

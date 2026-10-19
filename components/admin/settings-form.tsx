@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { updateSettings } from "@/lib/admin/settings";
 import type { AppSettings } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/misc";
 import { PushSettings } from "@/components/admin/push-settings";
 
@@ -27,6 +27,9 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
     pushNewBody: settings.push_new_body,
     pushBreachTitle: settings.push_breach_title,
     pushBreachBody: settings.push_breach_body,
+    joinMsgNoCompany: settings.join_msg_no_company,
+    joinMsgRejected: settings.join_msg_rejected,
+    joinMsgAccepted: settings.join_msg_accepted,
   });
   const [pending, start] = useTransition();
 
@@ -100,6 +103,21 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
 
         <PushSettings value={form} onChange={(patch) => setForm({ ...form, ...patch })} />
 
+        <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5 lg:col-span-2">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">Mensagens de entrada na comunidade</h2>
+            <p className="text-[13px] text-muted-foreground">
+              Enviadas no privado de quem pede para entrar. Variáveis: <span className="font-mono">{"{nome}"}</span>,{" "}
+              <span className="font-mono">{"{grupo}"}</span> e <span className="font-mono">{"{email}"}</span>.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <JoinMessage id="msg-no-company" label="Empresa não encontrada" hint="Só para quem veio do formulário." value={form.joinMsgNoCompany} onChange={(v) => setForm({ ...form, joinMsgNoCompany: v })} />
+            <JoinMessage id="msg-rejected" label="Pedido recusado" hint="Ao recusar no painel." value={form.joinMsgRejected} onChange={(v) => setForm({ ...form, joinMsgRejected: v })} />
+            <JoinMessage id="msg-accepted" label="Pedido aceito" hint="Ao entrar no grupo; {grupo} vira o nome dele." value={form.joinMsgAccepted} onChange={(v) => setForm({ ...form, joinMsgAccepted: v })} />
+          </div>
+        </section>
+
         <div className="flex justify-end lg:col-span-2">
           <Button type="submit" disabled={pending}>
             {pending && <Loader2 className="animate-spin" />} Salvar configurações
@@ -107,6 +125,16 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
         </div>
       </form>
     </main>
+  );
+}
+
+function JoinMessage({ id, label, hint, value, onChange }: { id: string; label: string; hint: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Textarea id={id} rows={5} maxLength={1000} value={value} onChange={(e) => onChange(e.target.value)} className="text-[13px]" />
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
   );
 }
 

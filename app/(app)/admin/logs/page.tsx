@@ -6,7 +6,7 @@ import { LogsView, type LogsTab } from "@/components/admin/logs-view";
 
 export const metadata: Metadata = { title: "Logs" };
 
-const TABS: LogsTab[] = ["conexao", "eventos", "alertas"];
+const TABS: LogsTab[] = ["conexao", "comunidade", "eventos", "alertas"];
 
 export default async function LogsPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
   await requireAdminPage();

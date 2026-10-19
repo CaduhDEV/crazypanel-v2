@@ -40,12 +40,8 @@ type RawLead = {
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 const date = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null);
 
-/** Lead do CRM com o mesmo telefone (o mais recente, se houver vários). null se não existe. */
-export async function findCrmLeadByPhone(phone: string): Promise<CrmLeadInfo | null> {
-  const key = phoneKey(phone);
-  if (key.length < 10) return null;
-
-  const url = `${process.env.DATACRAZY_API_URL!.replace(/\/+$/, "")}/leads?search=${encodeURIComponent(phone)}`;
+async function searchCrmLeads(term: string): Promise<RawLead[]> {
+  const url = `${process.env.DATACRAZY_API_URL!.replace(/\/+$/, "")}/leads?search=${encodeURIComponent(term)}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${process.env.DATACRAZY_API_KEY}` },
     cache: "no-store",
@@ -53,13 +49,13 @@ export async function findCrmLeadByPhone(phone: string): Promise<CrmLeadInfo | n
   });
   if (!res.ok) throw new Error(`CRM respondeu ${res.status}`);
   const body = (await res.json()) as { data?: RawLead[] };
+  return body.data ?? [];
+}
 
-  const matches = (body.data ?? [])
-    .filter((l) => phoneKey(l.phone ?? l.rawPhone) === key)
-    .sort((a, b) => Date.parse(b.updatedAt ?? "") - Date.parse(a.updatedAt ?? ""));
-  const lead = matches[0];
+/** O mais recente dos que batem; null se nenhum. */
+function toInfo(matches: RawLead[]): CrmLeadInfo | null {
+  const lead = [...matches].sort((a, b) => Date.parse(b.updatedAt ?? "") - Date.parse(a.updatedAt ?? ""))[0];
   if (!lead?.id) return null;
-
   const whatsapp = (lead.contacts ?? []).find((c) => c.platform === "WHATSAPP")?.lastContactStatus ?? null;
   const taxId = str(lead.taxId)?.replace(/\D/g, "") || null;
   return {
@@ -72,4 +68,18 @@ export async function findCrmLeadByPhone(phone: string): Promise<CrmLeadInfo | n
     lastSentAt: date(whatsapp?.lastSendedMessage?.date),
     pending: typeof whatsapp?.isPending === "boolean" ? whatsapp.isPending : null,
   };
+}
+
+/** Lead do CRM com o mesmo telefone (o mais recente, se houver vários). null se não existe. */
+export async function findCrmLeadByPhone(phone: string): Promise<CrmLeadInfo | null> {
+  const key = phoneKey(phone);
+  if (key.length < 10) return null;
+  return toInfo((await searchCrmLeads(phone)).filter((l) => phoneKey(l.phone ?? l.rawPhone) === key));
+}
+
+/** Lead do CRM com o mesmo e-mail (a busca é "contém": só vale o idêntico). */
+export async function findCrmLeadByEmail(email: string): Promise<CrmLeadInfo | null> {
+  const target = email.trim().toLowerCase();
+  if (!target.includes("@")) return null;
+  return toInfo((await searchCrmLeads(target)).filter((l) => str(l.email)?.toLowerCase() === target));
 }

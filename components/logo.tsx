@@ -27,7 +27,7 @@ export function Logo({ className }: { className?: string }) {
       <LogoMark />
       <span className="flex flex-col leading-none">
         <span className="text-[15px] font-semibold tracking-tight">CrazyPanel</span>
-        <span className="mt-0.5 text-[10.5px] font-medium text-muted-foreground">by DataCrazy</span>
+        <span className="mt-0.5 text-[10.5px] font-medium text-muted-foreground">DataCrazy Community</span>
       </span>
     </span>
   );

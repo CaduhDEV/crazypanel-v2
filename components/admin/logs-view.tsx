@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCw, Send, Trash2, Unplug, Webhook } from "lucide-react";
+import { BellRing, ChevronDown, ChevronRight, Loader2, RefreshCw, RotateCw, Send, Trash2, Unplug, UsersRound, Webhook } from "lucide-react";
 import { toast } from "sonner";
 import {
   getAlertSettings,
@@ -20,15 +20,21 @@ import {
 import { reprocessFailedEvents } from "@/lib/admin/whatsapp";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatRelative } from "@/lib/utils";
+import { communityEventText, type CommunityEventRow } from "@/components/community/event-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { EmptyState, Skeleton, Switch, Tip } from "@/components/ui/misc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export type LogsTab = "conexao" | "eventos" | "alertas";
+export type LogsTab = "conexao" | "comunidade" | "eventos" | "alertas";
 
-const TAB_LABELS: Record<LogsTab, string> = { conexao: "Conexão", eventos: "Eventos do webhook", alertas: "Alertas no Discord" };
+const TAB_LABELS: Record<LogsTab, string> = {
+  conexao: "Conexão",
+  comunidade: "Comunidade",
+  eventos: "Eventos do webhook",
+  alertas: "Alertas no Discord",
+};
 
 const STATUS: Record<string, { label: string; dot: string }> = {
   connected: { label: "Conectado", dot: "bg-success" },
@@ -97,6 +103,7 @@ export function LogsView({
 
       {tab === "conexao" && <ConnectionTab />}
       {tab === "eventos" && <EventsTab />}
+      {tab === "comunidade" && <CommunityTab />}
       {tab === "alertas" && <AlertsTab />}
     </main>
   );
@@ -145,14 +152,14 @@ function ConnectionTab() {
         </Button>
       </div>
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="data-table">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="px-4 py-2.5 font-semibold">Quando</th>
-              <th className="px-4 py-2.5 font-semibold">Mudança</th>
-              <th className="px-4 py-2.5 font-semibold">Motivo</th>
-              <th className="px-4 py-2.5 font-semibold">Fora do ar</th>
-              <th className="px-4 py-2.5 font-semibold">Alerta</th>
+              <th className="px-4 py-2.5 font-semibold w-[18%]">Quando</th>
+              <th className="px-4 py-2.5 font-semibold w-[22%]">Mudança</th>
+              <th className="px-4 py-2.5 font-semibold w-[30%]">Motivo</th>
+              <th className="px-4 py-2.5 font-semibold w-[12%]">Fora do ar</th>
+              <th className="px-4 py-2.5 font-semibold w-[18%]">Alerta</th>
             </tr>
           </thead>
           <tbody>
@@ -214,6 +221,98 @@ function humanDuration(seconds: number) {
   if (h) return `${h} h ${m} min`;
   if (m) return `${m} min ${s % 60} s`;
   return `${s} s`;
+}
+
+// =============================================================================
+// Comunidade (entradas, saídas e solicitações)
+// =============================================================================
+const COMMUNITY_FILTERS: { value: string; label: string; types: string[] | null }[] = [
+  { value: "todos", label: "Tudo", types: null },
+  { value: "entradas", label: "Entradas", types: ["joined_via_link", "added_by_admin", "invited_by_member"] },
+  { value: "saidas", label: "Saídas e remoções", types: ["left", "removed"] },
+  { value: "solicitacoes", label: "Solicitações", types: ["request_created", "request_accepted", "request_rejected", "request_expired", "invite_sent"] },
+  { value: "falhas", label: "Falhas", types: ["add_failed", "approve_failed", "pv_failed"] },
+];
+const COMMUNITY_PAGE = 50;
+
+function CommunityTab() {
+  const queryClient = useQueryClient();
+  const [filter, setFilter] = useState("todos");
+  const types = COMMUNITY_FILTERS.find((f) => f.value === filter)?.types ?? null;
+
+  const query = useInfiniteQuery({
+    queryKey: ["logs", "community", filter],
+    initialPageParam: undefined as number | undefined,
+    queryFn: async ({ pageParam }) => {
+      let q = createClient()
+        .from("community_events")
+        .select("*, group:wa_groups(name), actor:profiles(name)")
+        .order("id", { ascending: false })
+        .limit(COMMUNITY_PAGE);
+      if (types) q = q.in("type", types);
+      if (pageParam) q = q.lt("id", pageParam);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as CommunityEventRow[];
+    },
+    getNextPageParam: (last) => (last.length === COMMUNITY_PAGE ? last[last.length - 1].id : undefined),
+  });
+  const events = query.data?.pages.flat() ?? [];
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("community-events")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_events" }, () =>
+        queryClient.invalidateQueries({ queryKey: ["logs", "community"] }),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={filter} onValueChange={setFilter}>
+          <SelectTrigger className="w-52" aria-label="Filtrar eventos da comunidade">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {COMMUNITY_FILTERS.map((f) => (
+              <SelectItem key={f.value} value={f.value}>
+                {f.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={() => query.refetch()} disabled={query.isFetching}>
+          {query.isFetching && !query.isFetchingNextPage ? <Loader2 className="animate-spin" /> : <RefreshCw />} Atualizar
+        </Button>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border bg-card">
+        <ul className="divide-y divide-border">
+          {events.map((e) => (
+            <li key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+              <span className="w-36 shrink-0 text-[12px] tabular text-muted-foreground">{fmt(e.created_at)}</span>
+              <span className="min-w-0 flex-1 truncate">{communityEventText(e)}</span>
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{e.type}</span>
+            </li>
+          ))}
+        </ul>
+        {query.isLoading && <Skeleton className="m-4 h-24" />}
+        {!query.isLoading && events.length === 0 && (
+          <EmptyState icon={UsersRound} title="Nada registrado ainda" description="Entradas, saídas e solicitações de entrada aparecem aqui." />
+        )}
+      </div>
+      {query.hasNextPage && (
+        <Button variant="outline" size="sm" className="self-center" onClick={() => query.fetchNextPage()} disabled={query.isFetchingNextPage}>
+          {query.isFetchingNextPage && <Loader2 className="animate-spin" />} Carregar mais
+        </Button>
+      )}
+    </section>
+  );
 }
 
 // =============================================================================

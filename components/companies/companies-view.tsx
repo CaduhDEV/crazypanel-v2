@@ -110,15 +110,15 @@ export function CompaniesView({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[860px] text-sm">
+        <table className="data-table">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="px-4 py-2.5 font-semibold">Empresa</th>
-              <th className="px-4 py-2.5 font-semibold">CNPJ</th>
-              <th className="px-4 py-2.5 text-right font-semibold">Usuários</th>
-              <th className="px-4 py-2.5 font-semibold">Na comunidade</th>
-              <th className="px-4 py-2.5 text-right font-semibold">Leads vinculados</th>
-              <th className="px-4 py-2.5 font-semibold">Último acesso ao CRM</th>
+              <th className="px-4 py-2.5 font-semibold w-[30%]">Empresa</th>
+              <th className="px-4 py-2.5 font-semibold w-[15%]">CNPJ</th>
+              <th className="px-4 py-2.5 text-right font-semibold w-[9%]">Usuários</th>
+              <th className="px-4 py-2.5 font-semibold w-[16%]">Na comunidade</th>
+              <th className="px-4 py-2.5 text-right font-semibold w-[12%]">Leads vinculados</th>
+              <th className="px-4 py-2.5 font-semibold w-[18%]">Último acesso ao CRM</th>
             </tr>
           </thead>
           <tbody>

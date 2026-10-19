@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas acessíveis sem sessão. O webhook se autentica pelo segredo na URL.
-const PUBLIC_ROUTES = ["/login", "/esqueci-senha", "/auth", "/api/webhooks", "/api/cron"];
+const PUBLIC_ROUTES = ["/login", "/esqueci-senha", "/auth", "/api/webhooks", "/api/cron", "/api/community", "/api/verify"];
 // Rotas que não fazem sentido para quem já está logado.
 const GUEST_ONLY_ROUTES = ["/login", "/esqueci-senha"];
 
@@ -14,7 +14,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // O webhook não usa sessão: não gasta uma ida ao Auth a cada evento.
-  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/cron")) return NextResponse.next({ request });
+  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/cron") || pathname.startsWith("/api/community") || pathname.startsWith("/api/verify")) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
 

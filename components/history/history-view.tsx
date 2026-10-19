@@ -165,17 +165,17 @@ export function HistoryView({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="data-table">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="px-4 py-2.5 font-semibold">Nº</th>
-              <th className="px-4 py-2.5 font-semibold">Lead</th>
-              <th className="px-4 py-2.5 font-semibold">Assunto</th>
-              <th className="px-4 py-2.5 font-semibold">Responsável</th>
-              <th className="px-4 py-2.5 font-semibold">Situação</th>
-              <th className="px-4 py-2.5 font-semibold">Aberto</th>
-              <th className="px-4 py-2.5 text-right font-semibold">1ª resposta</th>
-              <th className="px-4 py-2.5 text-right font-semibold">Duração</th>
+              <th className="px-4 py-2.5 font-semibold w-[6%]">Nº</th>
+              <th className="px-4 py-2.5 font-semibold w-[17%]">Lead</th>
+              <th className="px-4 py-2.5 font-semibold w-[25%]">Assunto</th>
+              <th className="px-4 py-2.5 font-semibold w-[13%]">Responsável</th>
+              <th className="px-4 py-2.5 font-semibold w-[12%]">Situação</th>
+              <th className="px-4 py-2.5 font-semibold w-[9%]">Aberto</th>
+              <th className="px-4 py-2.5 text-right font-semibold w-[9%]">1ª resposta</th>
+              <th className="px-4 py-2.5 text-right font-semibold w-[9%]">Duração</th>
             </tr>
           </thead>
           <tbody>

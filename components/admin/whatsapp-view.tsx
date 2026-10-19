@@ -334,12 +334,12 @@ function EventsCard() {
         <p className="text-sm text-muted-foreground">Nenhum evento recebido ainda. Depois de conectar, envie uma mensagem num grupo para testar.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-[13px]">
+          <table className="data-table data-table--compact">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-                <th className="py-2 pr-4 font-semibold">Evento</th>
-                <th className="py-2 pr-4 font-semibold">Recebido</th>
-                <th className="py-2 font-semibold">Resultado</th>
+                <th className="py-2 pr-4 font-semibold w-[30%]">Evento</th>
+                <th className="py-2 pr-4 font-semibold w-[30%]">Recebido</th>
+                <th className="py-2 font-semibold w-[40%]">Resultado</th>
               </tr>
             </thead>
             <tbody>

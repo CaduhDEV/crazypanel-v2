@@ -1,0 +1,14 @@
+<!--
+  Template "Magic Link" do Supabase: código de verificação do formulário de
+  entrada na comunidade (crazypanel-form).
+  Dashboard → Authentication → Emails → Magic Link → cole este HTML.
+  Assunto sugerido: Seu código de verificação: {{ .Token }}
+  A equipe entra com senha, então este template só é usado pelos leads.
+-->
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #131a24;">
+  <p style="font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #5b6779; margin: 0 0 8px;">Comunidade DataCrazy</p>
+  <h1 style="font-size: 20px; margin: 0 0 16px;">Seu código de verificação</h1>
+  <p style="font-size: 15px; line-height: 1.5; margin: 0 0 20px;">Digite este código no formulário para confirmar o seu e-mail:</p>
+  <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; font-family: 'SFMono-Regular', Consolas, monospace; background: #edf2fa; border-radius: 10px; padding: 16px; text-align: center; margin: 0 0 20px;">{{ .Token }}</p>
+  <p style="font-size: 13px; line-height: 1.5; color: #5b6779; margin: 0;">Ele vale por alguns minutos. Se você não pediu este código, ignore este e-mail.</p>
+</div>

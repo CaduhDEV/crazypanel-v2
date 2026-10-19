@@ -163,14 +163,14 @@ export function InvitesView({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="data-table">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="px-4 py-2.5 font-semibold">Pessoa</th>
-              <th className="px-4 py-2.5 font-semibold">Telefone</th>
-              <th className="px-4 py-2.5 font-semibold">Empresa</th>
-              <th className="px-4 py-2.5 font-semibold">Último acesso ao CRM</th>
-              <th className="px-4 py-2.5" />
+              <th className="px-4 py-2.5 font-semibold w-[26%]">Pessoa</th>
+              <th className="px-4 py-2.5 font-semibold w-[14%]">Telefone</th>
+              <th className="px-4 py-2.5 font-semibold w-[24%]">Empresa</th>
+              <th className="px-4 py-2.5 font-semibold w-[13%]">Último acesso ao CRM</th>
+              <th className="px-4 py-2.5 w-[23%]" />
             </tr>
           </thead>
           <tbody>

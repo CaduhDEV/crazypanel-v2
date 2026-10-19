@@ -161,13 +161,15 @@ export function LeadsView({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Todos os grupos</SelectItem>
-            {groups.map((g) => (
-              <SelectItem key={g.jid} value={g.jid}>
-                {g.name ?? g.jid}
-                {!g.listening ? " (não escutado)" : ""}
-              </SelectItem>
-            ))}
+            <SelectItem value={ALL}>Todos os grupos escutados</SelectItem>
+            {/* Só os grupos escutados (a lista completa ainda dá nome aos grupos na coluna "Grupos"). */}
+            {groups
+              .filter((g) => g.listening || g.jid === filters.group)
+              .map((g) => (
+                <SelectItem key={g.jid} value={g.jid}>
+                  {g.name ?? g.jid}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
         {navigating && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
@@ -182,16 +184,16 @@ export function LeadsView({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="data-table">
           <thead>
             <tr className="border-b border-border bg-muted/50 text-left text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-              <th className="px-4 py-2.5 font-semibold">Lead</th>
-              <th className="px-4 py-2.5 font-semibold">Telefone</th>
-              <th className="px-4 py-2.5 font-semibold">Empresa</th>
-              <th className="px-4 py-2.5 font-semibold">Grupos</th>
-              <th className="px-4 py-2.5 text-right font-semibold">Mensagens</th>
-              <th className="px-4 py-2.5 font-semibold">Última mensagem</th>
-              <th className="px-4 py-2.5" />
+              <th className="px-4 py-2.5 font-semibold w-[21%]">Lead</th>
+              <th className="px-4 py-2.5 font-semibold w-[13%]">Telefone</th>
+              <th className="px-4 py-2.5 font-semibold w-[21%]">Empresa</th>
+              <th className="px-4 py-2.5 font-semibold w-[15%]">Grupos</th>
+              <th className="px-4 py-2.5 text-right font-semibold w-[8%]">Mensagens</th>
+              <th className="px-4 py-2.5 font-semibold w-[11%]">Última mensagem</th>
+              <th className="px-4 py-2.5 w-[11%]" />
             </tr>
           </thead>
           <tbody className={cn(navigating && "opacity-60")}>

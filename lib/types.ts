@@ -45,6 +45,10 @@ export interface AppSettings {
   push_new_body: string;
   push_breach_title: string;
   push_breach_body: string;
+  // Mensagens no privado da entrada na comunidade ({nome}, {grupo}, {email})
+  join_msg_no_company: string;
+  join_msg_rejected: string;
+  join_msg_accepted: string;
 }
 
 export interface WaGroup {
@@ -241,6 +245,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   push_new_body: "{lead}: {mensagem}",
   push_breach_title: "SLA estourado · #{numero}",
   push_breach_body: "{lead} está esperando resposta em {grupo}.",
+  join_msg_no_company:
+    "Olá, {nome}! Recebemos seu pedido para entrar na comunidade DataCrazy, mas não encontramos nenhuma empresa cadastrada com o e-mail {email}. Confira se é o mesmo e-mail que você usa no CRM DataCrazy e envie o formulário novamente.",
+  join_msg_rejected: "Olá, {nome}! Seu pedido para entrar na comunidade DataCrazy não foi aprovado.",
+  join_msg_accepted: "Olá, {nome}! Seu pedido foi aprovado e você entrou no grupo {grupo}. Seja bem-vindo(a) à comunidade DataCrazy!",
 };
 
 /**

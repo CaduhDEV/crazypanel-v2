@@ -284,3 +284,25 @@ export async function listActiveGleapTickets(): Promise<GleapTicketRow[]> {
   }
   return out;
 }
+
+// =============================================================================
+// Formulário verificado: sessões pelo e-mail e gravação do telefone
+// =============================================================================
+/** Sessões do Gleap com exatamente este e-mail. Lança se a busca falhar. */
+export async function findGleapSessionsByEmail(email: string): Promise<GleapSession[]> {
+  const target = email.trim().toLowerCase();
+  if (!target.includes("@")) return [];
+  return (await searchSessions(target)).filter((s) => s.id && s.email === target);
+}
+
+/** Grava o telefone (+55DDDNUMERO) numa sessão do Gleap. */
+export async function updateGleapSessionPhone(sessionId: string, phone: string): Promise<void> {
+  const res = await fetch(`${GLEAP_API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PUT",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ phone }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`Gleap respondeu ${res.status} ao gravar o telefone`);
+}

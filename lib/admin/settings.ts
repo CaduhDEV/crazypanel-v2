@@ -19,6 +19,9 @@ const settingsSchema = z.object({
   pushNewTitle: z.string().trim().min(1, { error: "Informe o título do aviso de atendimento novo." }).max(120),
   pushNewBody: z.string().trim().min(1, { error: "Informe o texto do aviso de atendimento novo." }).max(300),
   pushBreachTitle: z.string().trim().min(1, { error: "Informe o título do aviso de SLA estourado." }).max(120),
+  joinMsgNoCompany: z.string().trim().min(1, { error: "Informe a mensagem de empresa não encontrada." }).max(1000),
+  joinMsgRejected: z.string().trim().min(1, { error: "Informe a mensagem de recusa." }).max(1000),
+  joinMsgAccepted: z.string().trim().min(1, { error: "Informe a mensagem de boas-vindas." }).max(1000),
   pushBreachBody: z.string().trim().min(1, { error: "Informe o texto do aviso de SLA estourado." }).max(300),
 });
 
@@ -41,11 +44,14 @@ export async function updateSettings(input: z.input<typeof settingsSchema>): Pro
         push_new_body: s.pushNewBody,
         push_breach_title: s.pushBreachTitle,
         push_breach_body: s.pushBreachBody,
+        join_msg_no_company: s.joinMsgNoCompany,
+        join_msg_rejected: s.joinMsgRejected,
+        join_msg_accepted: s.joinMsgAccepted,
         updated_by: admin.id,
       })
       .eq("id", 1);
     if (error) {
-      if (/push_|burst_/.test(error.message)) throw new ActionError("Rode as migrations novas (npx supabase db push) antes de salvar.");
+      if (/push_|burst_|join_msg_/.test(error.message)) throw new ActionError("Rode as migrations novas (npx supabase db push) antes de salvar.");
       throw error;
     }
     revalidatePath("/", "layout");
