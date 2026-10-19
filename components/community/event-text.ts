@@ -27,6 +27,20 @@ export async function withGroupNames<T extends { group_jid: string | null }>(db:
   return rows.map((r) => ({ ...r, group: r.group_jid ? { name: names.get(r.group_jid) ?? null } : null }));
 }
 
+/** Códigos de erro do WhatsApp ao adicionar alguém num grupo. */
+const WA_ERROR: Record<number, string> = {
+  401: "o número bloqueou o WhatsApp da comunidade",
+  403: "a privacidade da pessoa não permite ser adicionada",
+  408: "a pessoa saiu do grupo há pouco",
+  409: "a pessoa já está no grupo",
+  500: "o grupo está cheio",
+};
+
+function waReason(code: unknown): string {
+  const n = Number(code);
+  return Number.isFinite(n) && n ? ` (${WA_ERROR[n] ?? `erro ${n} do WhatsApp`})` : "";
+}
+
 const PV_KIND: Record<string, string> = {
   no_company: "empresa não encontrada",
   rejected: "recusa",
@@ -44,7 +58,7 @@ export function communityEventText(e: CommunityEventRow): string {
     case "request_created":
       return `${who} pediu para entrar${d.source === "whatsapp" ? `${group} pelo WhatsApp` : " pelo formulário"}`;
     case "request_accepted":
-      return `${panel} aceitou ${who}`;
+      return `${panel} aceitou ${who}${Array.isArray(d.already) && d.already.length ? " (já estava no grupo)" : ""}`;
     case "request_rejected":
       return `${panel} recusou ${who}`;
     case "request_expired":
@@ -52,7 +66,7 @@ export function communityEventText(e: CommunityEventRow): string {
     case "invite_sent":
       return `Privacidade bloqueou a adição: convite enviado no privado de ${who}${group}`;
     case "add_failed":
-      return `Falha ao adicionar ${who}${group}`;
+      return `Falha ao adicionar ${who}${group}${waReason(d.error_code)}`;
     case "approve_failed":
       return `Falha ao ${d.action === "reject" ? "recusar" : "aprovar"} ${who} no WhatsApp${group}`;
     case "added_by_admin":

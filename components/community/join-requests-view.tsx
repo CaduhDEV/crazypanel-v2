@@ -447,7 +447,13 @@ function AcceptDialog({ request: r, onClose, onDone }: { request: JoinRequestIte
     start(async () => {
       const res = await acceptJoinRequest({ id: r.id, groupJids: r.source === "form" ? chosen : [] });
       if (!res.ok) return void toast.error(res.error);
-      toast.success(res.data.status === "invited" ? `Convite enviado no privado (${res.data.groups.join(", ")}).` : `Aceito em ${res.data.groups.join(", ")}.`);
+      toast.success(
+        res.data.status === "invited"
+          ? `Convite enviado no privado (${res.data.groups.join(", ")}).`
+          : res.data.status === "joined"
+            ? `Já estava em ${res.data.groups.join(", ")}; marcado como membro.`
+            : `Aceito em ${res.data.groups.join(", ")}.`,
+      );
       onDone();
       onClose();
     });

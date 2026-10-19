@@ -138,6 +138,7 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
 
     const added: string[] = [];
     const invited: string[] = [];
+    const already: string[] = [];
     const failed: string[] = [];
     for (const jid of targets) {
       const groupName = groups.get(jid) ?? jid;
@@ -147,6 +148,11 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
         const r = res.groupUpdated?.[0];
         if (!r || !r.Error) {
           added.push(jid);
+          continue;
+        }
+        // 409: já é participante (ex.: entrou por link, ou o número está sem o 9º dígito no WhatsApp).
+        if (r.Error === 409) {
+          already.push(jid);
           continue;
         }
         if (action === "add" && r.Error === 403) {
@@ -186,7 +192,7 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
       }
     }
 
-    const status = added.length ? "accepted" : invited.length ? "invited" : "error";
+    const status = added.length ? "accepted" : invited.length ? "invited" : already.length ? "joined" : "error";
     await db
       .from("join_requests")
       .update({
@@ -207,7 +213,7 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
         phone: req.phone,
         name: req.name,
         actor_profile_id: admin.id,
-        data: { added, invited, failed },
+        data: { added, invited, already, failed },
       });
     }
     if (added.length) {
@@ -218,7 +224,7 @@ export async function acceptJoinRequest(input: z.input<typeof acceptSchema>): Pr
     if (status === "error") throw new ActionError("Não foi possível colocar a pessoa em nenhum grupo. Veja o log da solicitação.");
 
     revalidatePath("/solicitacoes");
-    return { status, groups: [...added, ...invited].map((j) => groups.get(j) ?? j) };
+    return { status, groups: [...added, ...invited, ...already].map((j) => groups.get(j) ?? j) };
   });
 }
 
