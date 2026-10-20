@@ -283,6 +283,22 @@
 .tv-chart {
   font-size: 1.5vh;
 }
+/* Desenho suave de gráfico da esquerda para a direita (sem piscar nem saltar) */
+@keyframes tv-draw-chart {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+.tv-chart-draw .recharts-surface {
+  clip-path: inset(0 100% 0 0);
+}
+.tv-chart-draw.tv-chart-active .recharts-surface {
+  animation: tv-draw-chart 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: clip-path;
+}
 @keyframes tv-live {
   0%,
   100% {

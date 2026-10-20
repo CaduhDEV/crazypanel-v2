@@ -36,3 +36,6 @@ supabase/.temp
 
 # Relatórios da importação do sistema antigo (têm dados de clientes)
 /scripts/legacy-import/out/
+
+# temporários locais
+/.tmp/

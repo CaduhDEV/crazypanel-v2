@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ChevronLeft, ChevronRight, FileDown, Loader2, MonitorPlay } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, FileDown, MonitorPlay } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { indicators, pct, type MetricsPayload } from "@/lib/reports/data";
 import { delta, fInt, fMin, fPct } from "@/lib/reports/format";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
-import { AnimatedNumber, useLiveMetrics, useSince } from "@/components/metrics/live";
+import { AnimatedNumber, useLiveMetrics } from "@/components/metrics/live";
 import { CategoryBars, CategoryLegend, COLORS, Empty, GroupBars, Heatmap, RankBars, ResolutionDonut, TodayChart, TrendChart } from "@/components/metrics/charts";
 
 const PAGES = [
@@ -21,11 +21,10 @@ const PAGES = [
 type PageKey = (typeof PAGES)[number]["key"];
 
 export function MetricsView({ initial, periods }: { initial: MetricsPayload; periods: number[] }) {
-  const { data, updatedAt, refreshing, error } = useLiveMetrics(initial);
+  const { data, error } = useLiveMetrics(initial);
   const [page, setPage] = useState<PageKey>("geral");
   const index = PAGES.findIndex((p) => p.key === page);
   const go = (step: number) => setPage(PAGES[(index + step + PAGES.length) % PAGES.length].key);
-  const since = useSince(updatedAt);
 
   // Setas do teclado trocam a página (fora de campos de texto).
   useEffect(() => {

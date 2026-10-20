@@ -17,9 +17,10 @@ import {
   Plug2,
   ScrollText,
   Settings2,
-  Smartphone,
+  Tv,
   UserPlus,
   UsersRound,
+
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,7 @@ const SECTIONS: NavSection[] = [
       { href: "/convites", label: "Prospectos", icon: UserPlus },
       { href: "/historico", label: "Histórico", icon: History },
       { href: "/metricas", label: "Métricas", icon: BarChart3 },
+      { href: "/telao", label: "Modo Telão", icon: Tv },
     ],
   },
   {

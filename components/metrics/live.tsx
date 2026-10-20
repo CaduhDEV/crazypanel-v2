@@ -63,38 +63,72 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
   return { data, updatedAt, refreshing, error, refresh };
 }
 
-/** Número que conta até o valor novo quando ele muda. */
-export function AnimatedNumber({ value, format, duration = 900 }: { value: number | null; format: (v: number | null) => string; duration?: number }) {
-  const [shown, setShown] = useState<number | null>(value);
-  const from = useRef<number | null>(value);
+/**
+ * Número com animação de roleta vertical (odômetro) sem piscar a tela.
+ * A velocidade é proporcional à variação do número.
+ */
+export function AnimatedNumber({
+  value,
+  format,
+  duration,
+}: {
+  value: number | null;
+  format: (v: number | null) => string;
+  duration?: number;
+}) {
+  const prevRef = useRef<number | null>(value);
+  const [animDuration, setAnimDuration] = useState(700);
 
   useEffect(() => {
-    if (value === null || from.current === null) {
-      from.current = value;
-      setShown(value);
-      return;
+    if (value !== null && prevRef.current !== null && value !== prevRef.current) {
+      const diff = Math.abs(value - prevRef.current);
+      // Quanto maior o número que mudou, mais rápido/dinâmico o tempo
+      const calcDuration = duration ?? Math.min(1400, Math.max(500, 500 + diff * 60));
+      setAnimDuration(calcDuration);
     }
-    const start = from.current;
-    const diff = value - start;
-    if (!diff) return;
-    const t0 = performance.now();
-    let raf = 0;
-    const step = (t: number) => {
-      const p = Math.min(1, (t - t0) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      const v = start + diff * eased;
-      setShown(Number.isInteger(value) && Number.isInteger(start) ? Math.round(v) : Math.round(v * 10) / 10);
-      if (p < 1) raf = requestAnimationFrame(step);
-      else from.current = value;
-    };
-    raf = requestAnimationFrame(step);
-    return () => {
-      cancelAnimationFrame(raf);
-      from.current = value;
-    };
+    prevRef.current = value;
   }, [value, duration]);
 
-  return <>{format(shown)}</>;
+  if (value === null) return <>{format(null)}</>;
+
+  const text = format(value);
+
+  return (
+    <span className="inline-flex items-baseline overflow-hidden select-none">
+      {text.split("").map((char, idx) => {
+        const isDigit = /\d/.test(char);
+        if (!isDigit) {
+          return (
+            <span key={idx} className="inline-block">
+              {char}
+            </span>
+          );
+        }
+        const digit = parseInt(char, 10);
+        return (
+          <span
+            key={idx}
+            className="inline-block overflow-hidden tabular"
+            style={{ height: "1em", verticalAlign: "top", width: "0.62em", textAlign: "center" }}
+          >
+            <span
+              className="flex flex-col transition-transform ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{
+                transform: `translateY(-${digit * 10}%)`,
+                transitionDuration: `${animDuration}ms`,
+              }}
+            >
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                <span key={n} style={{ height: "1em" }} className="flex items-center justify-center">
+                  {n}
+                </span>
+              ))}
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 /** "atualizado há 12 s", recalculado a cada segundo. */
