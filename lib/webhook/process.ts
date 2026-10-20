@@ -222,22 +222,35 @@ export async function storeIncomingMedia(
   messageId: string,
   m: Pick<NormalizedMessage, "waId" | "mime" | "fileName">,
 ) {
-  try {
-    const uaz = clientFromRow(await getInstanceRow());
-    const dl = await uaz.download(m.waId);
-    if (!dl.fileURL) throw new Error("download sem fileURL");
-    const mime = dl.mimetype ?? m.mime;
-    const path = mediaPath("in", messageId, mime, m.fileName);
-    const stored = await copyRemoteToStorage(dl.fileURL, path, mime);
-    await db
-      .from("messages")
-      .update({ media_path: path, media_store: stored.store, media_mime: stored.mime, media_size: stored.size, media_status: "ready" })
-      .eq("id", messageId);
-  } catch (e) {
-    console.error(`[webhook] mídia da mensagem ${messageId} falhou:`, e);
-    await db.from("messages").update({ media_status: "failed" }).eq("id", messageId);
+  // A uazapi às vezes ainda não tem o arquivo logo depois do evento (ou a rede
+  // oscila): tenta de novo antes de marcar como falha. Roda depois da resposta
+  // ao webhook (after), então a espera não segura a uazapi.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const uaz = clientFromRow(await getInstanceRow());
+      const dl = await uaz.download(m.waId);
+      if (!dl.fileURL) throw new Error("download sem fileURL");
+      const mime = dl.mimetype ?? m.mime;
+      const path = mediaPath("in", messageId, mime, m.fileName);
+      const stored = await copyRemoteToStorage(dl.fileURL, path, mime);
+      await db
+        .from("messages")
+        .update({ media_path: path, media_store: stored.store, media_mime: stored.mime, media_size: stored.size, media_status: "ready" })
+        .eq("id", messageId);
+      return;
+    } catch (e) {
+      if (attempt < MEDIA_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, attempt * 3000));
+        continue;
+      }
+      console.error(`[webhook] mídia da mensagem ${messageId} falhou (${attempt} tentativas):`, e);
+      await db.from("messages").update({ media_status: "failed" }).eq("id", messageId);
+      return;
+    }
   }
 }
+
+const MEDIA_ATTEMPTS = 3;
 
 // =============================================================================
 // messages_update (recibos, exclusão)
