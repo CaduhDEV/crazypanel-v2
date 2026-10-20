@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { FileText, Loader2, Mic, Paperclip, SendHorizontal, Smile, Square, StickyNote, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { createMediaUpload, sendMediaMessage, sendTextMessage } from "@/lib/tickets/actions";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import { VOICE_NOTE_PREFIX, type Message } from "@/lib/types";
@@ -82,10 +81,9 @@ export function Composer({
     const mime = f.type || "application/octet-stream";
     const up = await createMediaUpload({ ticketId, fileName: f.name, mime, size: f.size });
     if (!up.ok) throw new Error(up.error);
-    const { error } = await createClient()
-      .storage.from(up.data.bucket)
-      .uploadToSignedUrl(up.data.path, up.data.token, f, { contentType: mime });
-    if (error) throw new Error("Não foi possível enviar o arquivo. Tente de novo.");
+    // Sobe direto para o R2 pelo link assinado.
+    const put = await fetch(up.data.url, { method: "PUT", body: f, headers: { "Content-Type": mime } }).catch(() => null);
+    if (!put?.ok) throw new Error("Não foi possível enviar o arquivo. Tente de novo.");
     const res = await sendMediaMessage({
       ticketId,
       path: up.data.path,

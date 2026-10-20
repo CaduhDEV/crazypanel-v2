@@ -161,6 +161,8 @@ export interface Message {
   kind: MessageKind;
   body: string | null;
   media_path: string | null;
+  /** Onde o arquivo está: R2 (novas) ou Supabase (anteriores ao R2). */
+  media_store?: "supabase" | "r2";
   media_mime: string | null;
   media_name: string | null;
   media_size: number | null;

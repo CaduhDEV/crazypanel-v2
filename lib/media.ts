@@ -1,9 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { r2Key, r2PresignGet, r2Put } from "@/lib/r2";
 import type { MessageKind } from "@/lib/types";
 
-// Somente servidor. Mídias ficam no bucket privado `whatsapp-media` e são
-// servidas por /api/media/:id (confere a sessão e redireciona para URL assinada).
+// Somente servidor. Mídias novas ficam no Cloudflare R2 (bucket privado, sob
+// R2_PREFIX) e as antigas no bucket `whatsapp-media` do Supabase até o
+// backfill. São servidas por /api/media/:id (confere a sessão e redireciona
+// para um link assinado de curta duração).
 
+export type MediaStore = "supabase" | "r2";
+
+/** Bucket antigo do Supabase (só leitura das mídias anteriores ao R2). */
 export const MEDIA_BUCKET = "whatsapp-media";
 export const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 
@@ -35,8 +41,8 @@ export function mediaPath(direction: "in" | "out", id: string, mime: string | nu
   return `${direction}/${now.getUTCFullYear()}/${month}/${id}.${extensionFor(mime, fileName)}`;
 }
 
-/** Baixa um arquivo público (ex.: fileURL da uazapi, que expira em 2 dias) e guarda no bucket. */
-export async function copyRemoteToStorage(url: string, path: string, mime: string | null): Promise<{ size: number; mime: string }> {
+/** Baixa um arquivo público (ex.: fileURL da uazapi, que expira em 2 dias) e guarda no R2. */
+export async function copyRemoteToStorage(url: string, path: string, mime: string | null): Promise<{ size: number; mime: string; store: MediaStore }> {
   const res = await fetch(url, { signal: AbortSignal.timeout(90_000), cache: "no-store" });
   if (!res.ok) throw new Error(`download da mídia falhou (${res.status})`);
   const length = Number(res.headers.get("content-length") ?? 0);
@@ -44,13 +50,27 @@ export async function copyRemoteToStorage(url: string, path: string, mime: strin
 
   const buffer = Buffer.from(await res.arrayBuffer());
   const contentType = mime ?? res.headers.get("content-type") ?? "application/octet-stream";
-  const { error } = await createAdminClient()
-    .storage.from(MEDIA_BUCKET)
-    .upload(path, buffer, { contentType, upsert: true });
-  if (error) throw new Error(`upload no Storage falhou: ${error.message}`);
-  return { size: buffer.length, mime: contentType };
+  await r2Put(r2Key(path), buffer, contentType);
+  return { size: buffer.length, mime: contentType, store: "r2" };
 }
 
+/** Guarda bytes gerados pelo painel (ex.: PDF do relatório) no R2. */
+export async function storeFile(path: string, bytes: ArrayBuffer | Uint8Array, contentType: string): Promise<MediaStore> {
+  await r2Put(r2Key(path), bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), contentType);
+  return "r2";
+}
+
+/** Link temporário para abrir o arquivo, onde quer que ele esteja. */
+export async function mediaUrl(
+  file: { path: string; store?: MediaStore | null; mime?: string | null },
+  expiresIn: number,
+  downloadName?: string,
+): Promise<string> {
+  if (file.store === "r2") return r2PresignGet(r2Key(file.path), expiresIn, { download: downloadName, contentType: file.mime });
+  return signedMediaUrl(file.path, expiresIn, downloadName);
+}
+
+/** Link assinado do Supabase (mídias anteriores ao R2). */
 export async function signedMediaUrl(path: string, expiresIn: number, downloadName?: string): Promise<string> {
   const { data, error } = await createAdminClient()
     .storage.from(MEDIA_BUCKET)

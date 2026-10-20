@@ -231,7 +231,7 @@ export async function storeIncomingMedia(
     const stored = await copyRemoteToStorage(dl.fileURL, path, mime);
     await db
       .from("messages")
-      .update({ media_path: path, media_mime: stored.mime, media_size: stored.size, media_status: "ready" })
+      .update({ media_path: path, media_store: stored.store, media_mime: stored.mime, media_size: stored.size, media_status: "ready" })
       .eq("id", messageId);
   } catch (e) {
     console.error(`[webhook] mídia da mensagem ${messageId} falhou:`, e);

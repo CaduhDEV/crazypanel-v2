@@ -7,7 +7,8 @@ import { ActionError, runAction, type ActionResult } from "@/lib/action";
 import { getUazapi } from "@/lib/uazapi/instance";
 import { TRACK_SOURCE, UazapiError, type UazMediaType, type UazMessage } from "@/lib/uazapi/client";
 import { getSettings } from "@/lib/settings";
-import { kindFromMime, MAX_MEDIA_BYTES, MEDIA_BUCKET, mediaPath, signedMediaUrl } from "@/lib/media";
+import { kindFromMime, MAX_MEDIA_BYTES, mediaPath, mediaUrl } from "@/lib/media";
+import { r2Head, r2Key, r2PresignPut } from "@/lib/r2";
 import { storeIncomingMedia } from "@/lib/webhook/process";
 import type { Message, Profile, ResolvedBy, TicketCategory, TicketTopic } from "@/lib/types";
 import { RESOLVED_BY, TICKET_CATEGORIES, TICKET_TOPICS, VOICE_NOTE_PREFIX } from "@/lib/types";
@@ -73,7 +74,7 @@ async function deliver(message: Message, profile: Profile): Promise<Message> {
       res = await uaz.sendText({ ...common, text: sign(profile, message.body ?? "", settings.sign_messages) });
     } else {
       if (!message.media_path) throw new ActionError("Arquivo da mensagem não encontrado.");
-      const file = await signedMediaUrl(message.media_path, 3600);
+      const file = await mediaUrl({ path: message.media_path, store: message.media_store, mime: message.media_mime }, 3600);
       const caption = message.body?.trim() ? sign(profile, message.body.trim(), settings.sign_messages) : undefined;
       res = await uaz.sendMedia({
         ...common,
@@ -185,7 +186,7 @@ export async function sendTextMessage(input: z.input<typeof sendTextSchema>): Pr
 }
 
 // =============================================================================
-// Mídia: o navegador sobe direto para o Storage (URL assinada) e depois envia
+// Mídia: o navegador sobe direto para o R2 (link de envio assinado) e depois envia
 // =============================================================================
 const uploadSchema = z.object({
   ticketId: id,
@@ -196,16 +197,14 @@ const uploadSchema = z.object({
 
 export async function createMediaUpload(
   input: z.input<typeof uploadSchema>,
-): Promise<ActionResult<{ path: string; token: string; bucket: string }>> {
+): Promise<ActionResult<{ path: string; url: string }>> {
   return runAction(uploadSchema, input, async ({ ticketId, fileName, mime }) => {
     await requireMember();
     const ticket = await loadTicket(ticketId);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
 
     const path = mediaPath("out", crypto.randomUUID(), mime, fileName);
-    const { data, error } = await createAdminClient().storage.from(MEDIA_BUCKET).createSignedUploadUrl(path);
-    if (error || !data) throw new Error(`createSignedUploadUrl: ${error?.message}`);
-    return { path: data.path, token: data.token, bucket: MEDIA_BUCKET };
+    return { path, url: await r2PresignPut(r2Key(path), mime, 15 * 60) };
   });
 }
 
@@ -225,6 +224,10 @@ export async function sendMediaMessage(input: z.input<typeof sendMediaSchema>): 
     const profile = await requireMember();
     const ticket = await loadTicket(ticketId);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
+    // O arquivo precisa ter chegado ao R2, com o tamanho declarado, antes de virar mensagem.
+    const uploaded = await r2Head(r2Key(path));
+    if (!uploaded) throw new ActionError("O envio do arquivo não terminou. Tente de novo.");
+    if (uploaded.size !== size || uploaded.size > MAX_MEDIA_BYTES) throw new ActionError("O arquivo enviado não confere. Tente de novo.");
 
     const { data: pending, error } = await createAdminClient()
       .from("messages")
@@ -237,6 +240,7 @@ export async function sendMediaMessage(input: z.input<typeof sendMediaSchema>): 
         kind: kindFromMime(mime),
         body: caption || null,
         media_path: path,
+        media_store: "r2",
         media_mime: mime,
         media_name: fileName,
         media_size: size,

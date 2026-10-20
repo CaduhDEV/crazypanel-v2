@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSettings } from "@/lib/settings";
 import { getUazapi } from "@/lib/uazapi/instance";
-import { MEDIA_BUCKET, signedMediaUrl } from "@/lib/media";
+import { mediaUrl, storeFile } from "@/lib/media";
 import { loadCommunityReport, reportPeriod, type CommunityReport } from "@/lib/reports/data";
 import { buildReportPdf, summaryLine } from "@/lib/reports/pdf";
 
 // Somente servidor. Emissão do relatório oficial: numera, gera o PDF, guarda no
-// Storage e envia pelo WhatsApp (uazapi) para os atendentes escolhidos.
+// R2 e envia pelo WhatsApp (uazapi) para os atendentes escolhidos.
 
 export interface Delivery {
   profile_id: string;
@@ -75,11 +75,12 @@ export async function issueReport(opts: { trigger: "schedule" | "manual"; reques
   const month = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit" }).format(fim).replace("-", "/");
   const path = `reports/${month}/${fileName}`;
 
-  const upload = await db.storage.from(MEDIA_BUCKET).upload(path, new Uint8Array(pdf), { contentType: "application/pdf", upsert: true });
-  if (upload.error) throw new Error(`Não foi possível guardar o PDF: ${upload.error.message}`);
-  await db.from("reports").update({ file_path: path, checksum: hash }).eq("id", id);
+  const store = await storeFile(path, pdf, "application/pdf").catch((e: unknown) => {
+    throw new Error(`Não foi possível guardar o PDF: ${e instanceof Error ? e.message : e}`);
+  });
+  await db.from("reports").update({ file_path: path, file_store: store, checksum: hash }).eq("id", id);
 
-  const url = await signedMediaUrl(path, 6 * 3600, fileName);
+  const url = await mediaUrl({ path, store, mime: "application/pdf" }, 6 * 3600, fileName);
   const caption = [
     `*Relatório das Comunidades nº ${number}*`,
     `Período: ${new Intl.DateTimeFormat("pt-BR", { timeZone: TZ }).format(inicio)} a ${new Intl.DateTimeFormat("pt-BR", { timeZone: TZ }).format(new Date(fim.getTime() - 1))}`,
