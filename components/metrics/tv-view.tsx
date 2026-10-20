@@ -27,8 +27,14 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
   const { data } = useLiveMetrics(initial, 30_000);
   const [full, setFull] = useState(false);
   const [slideMode, setSlideMode] = useState(false);
-  const [slideIndex, setSlideIndex] = useState(0);
-  const [slideProgress, setSlideProgress] = useState(0);
+  // Slide atual e progresso juntos: o avanço é uma atualização só, sem efeito
+  // colateral. (Antes o índice era trocado de dentro da atualização do progresso,
+  // e o React em desenvolvimento roda essas funções duas vezes: pulava um slide.)
+  const [slide, setSlide] = useState({ index: 0, progress: 0 });
+  const slideIndex = slide.index;
+  const slideProgress = slide.progress;
+  const goTo = (index: number | ((current: number) => number)) =>
+    setSlide((s) => ({ index: typeof index === "function" ? index(s.index) : index, progress: 0 }));
   const [slidePaused, setSlidePaused] = useState(false);
   const [trendView, setTrendView] = useState<"7d" | "hoje">("7d");
   const idle = useIdle(3000);
@@ -37,13 +43,8 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
   useEffect(() => {
     if (!slideMode || slidePaused) return;
     const timer = setInterval(() => {
-      setSlideProgress((p) => {
-        if (p >= 100) {
-          setSlideIndex((idx) => (idx + 1) % SLIDE_TABS.length);
-          return 0;
-        }
-        return p + 1.25; // 8 segundos por slide (80 * 100ms)
-      });
+      // 8 segundos por slide (80 × 100 ms)
+      setSlide((s) => (s.progress >= 100 ? { index: (s.index + 1) % SLIDE_TABS.length, progress: 0 } : { ...s, progress: s.progress + 1.25 }));
     }, 100);
     return () => clearInterval(timer);
   }, [slideMode, slidePaused]);
@@ -51,23 +52,16 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "s" || e.key === "S") {
-        setSlideMode((m) => {
-          if (m) {
-            setSlideProgress(0);
-            setSlideIndex(0);
-            setSlidePaused(false);
-          }
-          return !m;
-        });
+        setSlideMode((m) => !m);
+        setSlide({ index: 0, progress: 0 });
+        setSlidePaused(false);
       } else if (e.code === "Space") {
         e.preventDefault();
         setSlidePaused((p) => !p);
       } else if (e.key === "ArrowRight") {
-        setSlideIndex((i) => (i + 1) % SLIDE_TABS.length);
-        setSlideProgress(0);
+        setSlide((s) => ({ index: (s.index + 1) % SLIDE_TABS.length, progress: 0 }));
       } else if (e.key === "ArrowLeft") {
-        setSlideIndex((i) => (i - 1 + SLIDE_TABS.length) % SLIDE_TABS.length);
-        setSlideProgress(0);
+        setSlide((s) => ({ index: (s.index - 1 + SLIDE_TABS.length) % SLIDE_TABS.length, progress: 0 }));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -101,10 +95,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
               <button
                 key={tab.label}
                 type="button"
-                onClick={() => {
-                  setSlideIndex(idx);
-                  setSlideProgress(0);
-                }}
+                onClick={() => goTo(idx)}
                 className="group flex flex-1 flex-col gap-[0.4vh] text-left transition-all"
               >
                 <div className="h-[4px] w-full overflow-hidden rounded-full bg-muted/40">
@@ -156,8 +147,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
               type="button"
               onClick={() => {
                 setSlideMode(false);
-                setSlideProgress(0);
-                setSlideIndex(0);
+                goTo(0);
                 setSlidePaused(false);
               }}
               className={cn(
@@ -228,7 +218,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
                 emptyMessage="Ninguém ajudou outros membros ainda."
                 activeTab="comunidade"
                 onTabChange={(tab) => {
-                  if (tab === "equipe") setSlideIndex(2);
+                  if (tab === "equipe") goTo(2);
                 }}
               />
             </div>
@@ -252,7 +242,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
                 emptyMessage="Nenhum atendimento assumido ainda."
                 activeTab="equipe"
                 onTabChange={(tab) => {
-                  if (tab === "comunidade") setSlideIndex(1);
+                  if (tab === "comunidade") goTo(1);
                 }}
               />
             </div>
