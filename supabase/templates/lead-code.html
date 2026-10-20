@@ -1,14 +1,64 @@
 <!--
-  Template "Magic Link" do Supabase: código de verificação do formulário de
-  entrada na comunidade (crazypanel-form).
+  Template "Magic Link" do Supabase Auth.
   Dashboard → Authentication → Emails → Magic Link → cole este HTML.
-  Assunto sugerido: Seu código de verificação: {{ .Token }}
-  A equipe entra com senha, então este template só é usado pelos leads.
+  Assunto: Seu código de verificação: {{ .Token }}
+  Gerado por scripts/email-templates.mts (edite lá, não aqui).
 -->
-<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #131a24;">
-  <p style="font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #5b6779; margin: 0 0 8px;">Comunidade DataCrazy</p>
-  <h1 style="font-size: 20px; margin: 0 0 16px;">Seu código de verificação</h1>
-  <p style="font-size: 15px; line-height: 1.5; margin: 0 0 20px;">Digite este código no formulário para confirmar o seu e-mail:</p>
-  <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; font-family: 'SFMono-Regular', Consolas, monospace; background: #edf2fa; border-radius: 10px; padding: 16px; text-align: center; margin: 0 0 20px;">{{ .Token }}</p>
-  <p style="font-size: 13px; line-height: 1.5; color: #5b6779; margin: 0;">Ele vale por alguns minutos. Se você não pediu este código, ignore este e-mail.</p>
-</div>
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Seu código de verificação: {{ .Token }}</title>
+  </head>
+  <body style="margin:0; padding:0; background:#f3f6fb;">
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0; color:transparent;">Use este código para confirmar o seu e-mail na comunidade DataCrazy.</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f6fb;">
+      <tr>
+        <td align="center" style="padding:32px 12px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px; background:#ffffff; border:1px solid #e3e8f0; border-radius:16px; overflow:hidden;">
+            <tr>
+              <td style="background:#13284a; padding:22px 32px; border-bottom:3px solid #2f62a8;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="vertical-align:middle;"><img src="https://zpqmealusvkljfnsqvia.supabase.co/storage/v1/object/public/avatars/brand/datacrazy-mark.png" width="40" height="40" alt="DataCrazy" style="display:block; border:0; border-radius:10px;" /></td>
+                    <td style="vertical-align:middle; padding-left:12px;">
+                      <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:17px; line-height:20px; font-weight:700; color:#ffffff;">DataCrazy</div>
+                      <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:16px; color:#b9c8e2;">CrazyPanel · Comunidades no WhatsApp</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 32px 8px;">
+              <p style="margin:0 0 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:16px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:#2f62a8;">Comunidade DataCrazy</p>
+              <h1 style="margin:0 0 14px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:24px; line-height:30px; font-weight:700; color:#131a24;">Seu código de verificação</h1>
+              <p style="margin:0 0 16px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:24px; color:#3b4656;">Digite este código no formulário para confirmar o seu e-mail:</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;">
+                <tr>
+                  <td align="center" style="background:#edf2fa; border:1px solid #d6e1f2; border-radius:12px; padding:22px 12px;">
+                    <span style="font-family:'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size:34px; line-height:40px; font-weight:700; letter-spacing:10px; color:#13284a;">{{ .Token }}</span>
+                  </td>
+                </tr>
+              </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 28px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="border-top:1px solid #e3e8f0; padding-top:18px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:20px; color:#6b7686;">O código vale por alguns minutos. Se você não pediu, ignore este e-mail.</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:20px 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:18px; color:#94a0b2;">DataCrazy · Este é um e-mail automático, não responda.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
