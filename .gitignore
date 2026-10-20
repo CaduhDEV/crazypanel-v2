@@ -33,3 +33,6 @@ next-env.d.ts
 
 # supabase cli (projeto vinculado, endereço do banco)
 supabase/.temp
+
+# Relatórios da importação do sistema antigo (têm dados de clientes)
+/scripts/legacy-import/out/
