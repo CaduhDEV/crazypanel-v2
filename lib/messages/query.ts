@@ -55,16 +55,16 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 const TICKET_EMBED = "tickets!messages_ticket_id_fkey";
 
 export const MESSAGE_COLUMNS =
-  "id, wa_id, group_jid, ticket_id, contact_id, author_id, from_me, is_note, sender_name, kind, body, media_path, media_store, media_name, media_mime, media_size, media_duration, media_status, quoted_wa_id, status, edited_at, deleted_at, sent_at, legacy_id, " +
+  "id, wa_id, group_jid, ticket_id, contact_id, author_id, from_me, is_note, sender_name, kind, body, media_path, media_store, media_name, media_mime, media_size, media_duration, media_status, quoted_wa_id, status, edited_at, deleted_at, sent_at, legacy_id, category, topic, category_source, " +
   "contact:contacts!contact_id(id, name, phone, lid, kind, avatar_url, company:companies(name)), group:wa_groups(name)";
 
 /**
  * Uma página de mensagens. A busca por nome ou telefone do contato resolve os
- * contatos antes (o filtro em tabela relacionada não entra no "ou"); categoria
- * filtra pelo atendimento da mensagem.
+ * contatos antes (o filtro em tabela relacionada não entra no "ou"); a categoria
+ * é a da própria mensagem (a do atendimento ou, fora dele, por regras).
  */
 export async function fetchMessages(supabase: Supabase, f: MessageFilters, range: [number, number], opts: { count?: boolean } = {}) {
-  const ticket = `ticket:${TICKET_EMBED}${f.category ? "!inner" : ""}(number, category, topic, status)`;
+  const ticket = `ticket:${TICKET_EMBED}(number, category, topic, status)`;
   let query = supabase.from("messages").select(`${MESSAGE_COLUMNS}, ${ticket}`, opts.count ? { count: "exact" } : undefined);
 
   if (f.period === "intervalo") {
@@ -77,8 +77,8 @@ export async function fetchMessages(supabase: Supabase, f: MessageFilters, range
   if (f.group) query = query.eq("group_jid", f.group);
   if (f.kind === "nota") query = query.eq("is_note", true);
   else if (f.kind) query = query.eq("kind", f.kind).eq("is_note", false);
-  if (f.category) query = query.eq("ticket.category", f.category);
-  if (f.topic) query = query.eq("ticket.topic", f.topic);
+  if (f.category) query = query.eq("category", f.category);
+  if (f.topic) query = query.eq("topic", f.topic);
 
   if (f.q) {
     const term = f.q.replace(/[%,()*]/g, " ").trim();

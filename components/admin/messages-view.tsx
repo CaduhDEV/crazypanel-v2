@@ -66,6 +66,9 @@ export interface MessageRow extends Pick<
   | "sent_at"
 > {
   legacy_id: string | null;
+  category: string | null;
+  topic: string | null;
+  category_source: "atendimento" | "regras" | "herdada" | null;
   contact: { id: string; name: string | null; phone: string | null; lid: string | null; kind: ContactKind; avatar_url: string | null; company: { name: string } | null } | null;
   group: { name: string | null } | null;
   ticket: { number: number; category: string | null; topic: string | null; status: string } | null;
@@ -264,7 +267,7 @@ export function MessagesView({
           <span className="ml-auto text-sm text-muted-foreground tabular">{pluralize(total, "mensagem", "mensagens")}</span>
         </div>
         {filters.category && (
-          <p className="text-xs text-muted-foreground">A categoria é a do atendimento: mensagens fora de atendimento não aparecem com esse filtro.</p>
+          <p className="text-xs text-muted-foreground">Categoria da mensagem: a do atendimento ou, fora dele, pelas regras e pelo assunto da conversa.</p>
         )}
       </div>
 
@@ -277,7 +280,7 @@ export function MessagesView({
               <th className="w-[36%] px-4 py-2.5 font-semibold">Mensagem</th>
               <th className="w-[10%] px-4 py-2.5 font-semibold">Tipo</th>
               <th className="w-[12%] px-4 py-2.5 font-semibold">Grupo</th>
-              <th className="w-[13%] px-4 py-2.5 font-semibold">Atendimento</th>
+              <th className="w-[13%] px-4 py-2.5 font-semibold">Categoria</th>
             </tr>
           </thead>
           <tbody>
@@ -285,7 +288,7 @@ export function MessagesView({
               const a = authorOf(m, memberById);
               const k = kindOf(m);
               const Icon = KIND_ICON[k] ?? MessageSquareText;
-              const classification = m.ticket ? classificationLabel(m.ticket.category, m.ticket.topic) : null;
+              const classification = classificationLabel(m.category, m.topic);
               return (
                 <tr
                   key={m.id}
@@ -320,14 +323,10 @@ export function MessagesView({
                     <span className="line-clamp-1 text-muted-foreground">{m.group?.name ?? m.group_jid}</span>
                   </td>
                   <td className="px-4 py-2.5">
-                    {m.ticket ? (
-                      <span className="flex flex-col">
-                        <span className="font-mono text-[12px] tabular">#{m.ticket.number}</span>
-                        {classification && <span className="truncate text-[11px] text-muted-foreground">{classification}</span>}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <span className="flex flex-col">
+                      <span className="truncate">{classification ?? <span className="text-muted-foreground">—</span>}</span>
+                      <span className="truncate font-mono text-[11px] text-muted-foreground tabular">{m.ticket ? `#${m.ticket.number}` : "fora de atendimento"}</span>
+                    </span>
                   </td>
                 </tr>
               );
@@ -409,7 +408,8 @@ function MessageContext({ initial }: { initial: MessageRow }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [data]);
 
-  const classification = current.ticket ? classificationLabel(current.ticket.category, current.ticket.topic) : null;
+  const classification = classificationLabel(current.category, current.topic);
+  const SOURCE: Record<string, string> = { atendimento: "do atendimento", regras: "por regras", herdada: "herdada da conversa" };
 
   return (
     <>
@@ -418,12 +418,12 @@ function MessageContext({ initial }: { initial: MessageRow }) {
         <DialogDescription className="first-letter:uppercase">{fullDate.format(new Date(current.sent_at))}</DialogDescription>
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="outline">{kindLabel(kindOf(current))}</Badge>
-          {current.ticket && (
-            <Badge variant="neutral">
-              Atendimento #{current.ticket.number}
-              {classification ? ` · ${classification}` : ""}
+          {classification && (
+            <Badge variant="neutral" title={current.category_source ? `Categoria ${SOURCE[current.category_source]}` : undefined}>
+              {classification}
             </Badge>
           )}
+          {current.ticket && <Badge variant="outline">Atendimento #{current.ticket.number}</Badge>}
           {current.legacy_id && <Badge variant="outline">Sistema antigo</Badge>}
           {current.ticket_id && (
             <Button variant="ghost" size="sm" className="ml-auto h-7" asChild>

@@ -127,3 +127,24 @@ export function classify(i: ClassifyInput): Classification {
   if (i.finishedReason === "parallel") return out("comunidade", "offtopic", "assunto paralelo");
   return out(null, null, text ? "sem sinal" : "sem texto");
 }
+
+/**
+ * Uma mensagem fora de atendimento. "Respostas" e "Contexto" (categoria antiga)
+ * dizem o papel na conversa, não o assunto: herdam o da mensagem citada ou da
+ * conversa ("inherit"). Sem sinal, null.
+ */
+export function classifyMessage(oldCategory: string | null, text: string): { category: Category; topic: Topic | null } | "inherit" | null {
+  const old = norm(oldCategory);
+  if (old === "respostas" || old === "contexto") return "inherit";
+  const c = classify({
+    finishedReason: null,
+    ownerCategories: [oldCategory],
+    allCategories: [],
+    ownerText: text,
+    allText: "",
+    communityReplied: false,
+    teamReplied: false,
+    resolved: false,
+  });
+  return c.category ? { category: c.category, topic: c.topic } : null;
+}
