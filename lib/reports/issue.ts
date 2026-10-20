@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/settings";
 import { getUazapi } from "@/lib/uazapi/instance";
 import { mediaUrl, storeFile } from "@/lib/media";
 import { loadCommunityReport, reportPeriod, type CommunityReport } from "@/lib/reports/data";
+import { periodRange, type MetricsPeriod } from "@/lib/reports/period";
 import { buildReportPdf, summaryLine } from "@/lib/reports/pdf";
 
 // Somente servidor. Emissão do relatório oficial: numera, gera o PDF, guarda no
@@ -39,8 +40,8 @@ export function reportFileName(number: string | null, fim: Date) {
 }
 
 /** PDF sem número (prévia: não envia, não numera). */
-export async function previewReport(days: number) {
-  const { inicio, fim } = reportPeriod(days);
+export async function previewReport(period: MetricsPeriod) {
+  const { inicio, fim } = periodRange(period);
   const report = await loadCommunityReport(inicio, fim);
   const { code } = verification(report, null);
   return { pdf: buildReportPdf(report, { number: null, verification: code }), fileName: reportFileName(null, fim) };

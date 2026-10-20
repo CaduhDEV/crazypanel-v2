@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { periodDays, periodRange, type MetricsPeriod } from "@/lib/reports/period";
 
 // Somente servidor. Dados do relatório das comunidades: calculados no banco
 // (public.community_report), com as definições de docs/metricas/relatorio.md.
@@ -90,13 +91,16 @@ export interface LiveReport {
 }
 
 export interface MetricsPayload {
+  /** Quantos dias o período cobre. */
   days: number;
+  period: MetricsPeriod;
   report: CommunityReport;
   live: LiveReport;
 }
 
-export async function loadMetrics(days: number): Promise<MetricsPayload> {
-  const { inicio, fim } = reportPeriod(days, new Date(Date.now() + 3_600_000)); // até a hora atual inclusive
+export async function loadMetrics(period: MetricsPeriod): Promise<MetricsPayload> {
+  const { inicio, fim } = periodRange(period);
+  const days = periodDays(period);
   const db = createAdminClient();
   const [report, live] = await Promise.all([
     loadCommunityReport(inicio, fim),
@@ -105,5 +109,5 @@ export async function loadMetrics(days: number): Promise<MetricsPayload> {
       return data as LiveReport;
     }),
   ]);
-  return { days, report, live };
+  return { days, period, report, live };
 }

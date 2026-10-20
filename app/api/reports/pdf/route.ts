@@ -4,10 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { MEDIA_BUCKET } from "@/lib/media";
 import { r2Get, r2Key } from "@/lib/r2";
 import { previewReport } from "@/lib/reports/issue";
+import { parsePeriod } from "@/lib/reports/period";
 
 export const maxDuration = 120;
 
-// PDF do relatório: ?dias=7|30|90 gera a prévia (sem número); ?id=N baixa um relatório emitido (só admin).
+// PDF do relatório: ?dias=7|30|90 ou ?de=AAAA-MM-DD&ate=AAAA-MM-DD gera a prévia (sem número); ?id=N baixa um relatório emitido (só admin).
 export async function GET(request: NextRequest) {
   const profile = await getCurrentProfile();
   if (!profile) return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
@@ -30,9 +31,10 @@ export async function GET(request: NextRequest) {
     return pdfResponse(await data.arrayBuffer(), name);
   }
 
-  const days = Math.min(90, Math.max(1, Number(request.nextUrl.searchParams.get("dias")) || 7));
+  const sp = request.nextUrl.searchParams;
+  const period = parsePeriod({ dias: sp.get("dias"), de: sp.get("de"), ate: sp.get("ate") }, [1, 7, 30, 90]);
   try {
-    const { pdf, fileName } = await previewReport(days);
+    const { pdf, fileName } = await previewReport(period);
     return pdfResponse(pdf, fileName);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Não foi possível gerar o PDF." }, { status: 500 });

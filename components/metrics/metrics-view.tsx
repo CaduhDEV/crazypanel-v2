@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ChevronLeft, ChevronRight, FileDown, MonitorPlay } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, FileDown, MonitorPlay } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { indicators, pct, type MetricsPayload } from "@/lib/reports/data";
+import { periodLabel, periodQuery, type MetricsPeriod } from "@/lib/reports/period";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { delta, fInt, fMin, fPct } from "@/lib/reports/format";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
@@ -69,26 +73,14 @@ export function MetricsView({ initial, periods }: { initial: MetricsPayload; per
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={error ?? undefined}>
           </span>
-          <div className="flex rounded-md border border-border p-0.5" role="tablist" aria-label="Período">
-            {periods.map((d) => (
-              <Link
-                key={d}
-                href={`/metricas?dias=${d}`}
-                role="tab"
-                aria-selected={d === data.days}
-                className={cn("rounded px-2.5 py-1 text-[13px]", d === data.days ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent")}
-              >
-                {d} dias
-              </Link>
-            ))}
-          </div>
+          <PeriodPicker period={data.period} periods={periods} />
           <Button variant="outline" size="sm" asChild>
-            <a href={`/api/reports/pdf?dias=${data.days}`} target="_blank" rel="noopener">
+            <a href={`/api/reports/pdf?${periodQuery(data.period)}`} target="_blank" rel="noopener">
               <FileDown /> PDF
             </a>
           </Button>
           <Button size="sm" asChild>
-            <Link href={`/telao?dias=${data.days}`} target="_blank">
+            <Link href={`/telao?${periodQuery(data.period)}`} target="_blank">
               <MonitorPlay /> Modo telão
             </Link>
           </Button>
@@ -104,6 +96,85 @@ export function MetricsView({ initial, periods }: { initial: MetricsPayload; per
         {page === "temas" && <TopicsPage data={data} />}
       </div>
     </main>
+  );
+}
+
+// --- período --------------------------------------------------------------------
+
+const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** Atalhos (7, 30, 90 dias) e um intervalo escolhido: data inicial e final. */
+function PeriodPicker({ period, periods }: { period: MetricsPeriod; periods: number[] }) {
+  const router = useRouter();
+  const custom = !("days" in period);
+  const [today] = useState(() => ymd.format(new Date()));
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState(() => (custom ? period.from : ymd.format(new Date(Date.now() - 6 * 86_400_000))));
+  const [to, setTo] = useState(custom ? period.to : today);
+  const invalid = !from || !to || from > to;
+
+  const apply = () => {
+    if (invalid) return;
+    setOpen(false);
+    router.push(`/metricas?${periodQuery({ from, to })}`);
+  };
+
+  return (
+    <div className="flex rounded-md border border-border p-0.5" role="tablist" aria-label="Período">
+      {periods.map((d) => {
+        const active = !custom && "days" in period && period.days === d;
+        return (
+          <Link
+            key={d}
+            href={`/metricas?dias=${d}`}
+            role="tab"
+            aria-selected={active}
+            className={cn("rounded px-2.5 py-1 text-[13px]", active ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent")}
+          >
+            {d} dias
+          </Link>
+        );
+      })}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={custom}
+            className={cn("flex items-center gap-1.5 rounded px-2.5 py-1 text-[13px]", custom ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent")}
+          >
+            <CalendarRange className="size-3.5" />
+            {custom ? periodLabel(period) : "Personalizado"}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-72">
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              apply();
+            }}
+          >
+            <span className="text-sm font-medium">Período personalizado</span>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                Data inicial
+                <Input type="date" value={from} max={to || today} onChange={(e) => setFrom(e.target.value)} className="h-9" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                Data final
+                <Input type="date" value={to} min={from || undefined} max={today} onChange={(e) => setTo(e.target.value)} className="h-9" />
+              </label>
+            </div>
+            {from && to && from > to && <span className="text-xs text-destructive">A data inicial precisa ser antes da final.</span>}
+            <span className="text-[11.5px] text-muted-foreground">Dias inteiros, no horário de Brasília. A comparação é com o mesmo número de dias antes.</span>
+            <Button type="submit" size="sm" disabled={invalid}>
+              Aplicar
+            </Button>
+          </form>
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }
 

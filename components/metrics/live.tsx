@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MetricsPayload } from "@/lib/reports/data";
+import { periodQuery } from "@/lib/reports/period";
 
 /**
  * Métricas ao vivo: busca de novo a cada `intervalMs` e, em segundos, quando
@@ -14,7 +15,7 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
   const [updatedAt, setUpdatedAt] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const days = initial.days;
+  const query = periodQuery(initial.period);
   const inFlight = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -23,7 +24,7 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
     inFlight.current = true;
     setRefreshing(true);
     try {
-      const res = await fetch(`/api/metrics?dias=${days}`, { cache: "no-store" });
+      const res = await fetch(`/api/metrics?${query}`, { cache: "no-store" });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error ?? "Falha ao atualizar.");
       setData(body as MetricsPayload);
@@ -35,7 +36,7 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
       inFlight.current = false;
       setRefreshing(false);
     }
-  }, [days]);
+  }, [query]);
 
   useEffect(() => {
     const id = setInterval(refresh, intervalMs);
@@ -49,7 +50,7 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
     };
     const supabase = createClient();
     const channel = supabase
-      .channel(`metrics-live-${days}`)
+      .channel(`metrics-live-${query}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "tickets" }, soon)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, soon)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_events" }, soon)
@@ -58,7 +59,7 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
       if (timer.current) clearTimeout(timer.current);
       supabase.removeChannel(channel);
     };
-  }, [refresh, days]);
+  }, [refresh, query]);
 
   return { data, updatedAt, refreshing, error, refresh };
 }
