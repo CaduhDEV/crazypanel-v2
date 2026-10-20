@@ -97,12 +97,12 @@ export function InboxView() {
     startClaim(async () => {
       const res = await claimNextTicket();
       if (!res.ok) return void toast.error(res.error);
-      if (!res.data) return void toast.message("Nenhum atendimento sem responsável aguardando.");
+      if (!res.data) return void toast.message("Nenhum atendimento em aberto.");
       openTicket(res.data);
     });
 
   const TABS: { value: Tab; label: string; tone?: string }[] = [
-    { value: "unassigned", label: "Sem responsável" },
+    { value: "unassigned", label: "Em Aberto" },
     { value: "mine", label: "Meus" },
     { value: "assigned", label: "Em atendimento" },
     { value: "breach", label: "SLA estourado", tone: "text-destructive" },
@@ -132,7 +132,7 @@ export function InboxView() {
             </div>
             <Button onClick={handleClaim} disabled={claiming}>
               {claiming ? <Loader2 className="animate-spin" /> : <ChevronRight />}
-              Puxar próximo da fila
+              Chamar Próximo
             </Button>
             {isAdmin && (
               <DropdownMenu>
