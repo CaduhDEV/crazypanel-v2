@@ -6,7 +6,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, ExternalLink, History, Loader2, Search, X } from "lucide-react";
 import type { HistoryFilters } from "@/lib/history/query";
 import { cn, contactLabel, formatDuration, formatRelative, pluralize } from "@/lib/utils";
-import { classificationLabel, CLOSE_REASONS, TICKET_CATEGORIES, type CloseReason, type ContactKind } from "@/lib/types";
+import { CLOSE_REASONS, type CloseReason, type ContactKind } from "@/lib/types";
+import { classificationLabel } from "@/lib/taxonomy";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,7 @@ export function HistoryView({
   groups: { jid: string; name: string | null }[];
   error: string | null;
 }) {
-  const { members, memberById } = useApp();
+  const { members, memberById, taxonomy } = useApp();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -134,9 +135,10 @@ export function HistoryView({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Todas as categorias</SelectItem>
-            {TICKET_CATEGORIES.map((c) => (
-              <SelectItem key={c.value} value={c.value}>
+            {taxonomy.categories.map((c) => (
+              <SelectItem key={c.key} value={c.key}>
                 {c.label}
+                {c.archived ? " (arquivada)" : ""}
               </SelectItem>
             ))}
           </SelectContent>
@@ -187,7 +189,7 @@ export function HistoryView({
                   ? formatDuration((Date.parse(r.first_response_at) - Date.parse(r.opened_at)) / 1000)
                   : "—";
               const duration = r.closed_at ? formatDuration((Date.parse(r.closed_at) - Date.parse(r.opened_at)) / 1000) : "—";
-              const category = classificationLabel(r.category, r.topic);
+              const category = classificationLabel(taxonomy, r.category, r.topic);
               return (
                 <tr
                   key={r.id}

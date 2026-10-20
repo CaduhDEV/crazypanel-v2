@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { indicators, pct, type MetricsPayload } from "@/lib/reports/data";
 import { periodLabel, periodQuery, type MetricsPeriod } from "@/lib/reports/period";
 import { Input } from "@/components/ui/input";
+import { useApp } from "@/components/app/app-context";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { delta, fInt, fMin, fPct } from "@/lib/reports/format";
 import { Button } from "@/components/ui/button";
@@ -306,10 +307,11 @@ function TeamPage({ data }: { data: MetricsPayload }) {
 }
 
 function TopicsPage({ data }: { data: MetricsPayload }) {
+  const { taxonomy } = useApp();
   return (
     <Grid rows="lg:grid-rows-2">
-      <Card title="Categorias" description="Subcategorias das threads finalizadas." className="lg:col-span-5 lg:row-span-2" action={<CategoryLegend />}>
-        <CategoryBars categorias={data.live.categorias} />
+      <Card title="Categorias" description="Subcategorias das threads finalizadas." className="lg:col-span-5 lg:row-span-2" action={<CategoryLegend taxonomy={taxonomy} />}>
+        <CategoryBars categorias={data.live.categorias} taxonomy={taxonomy} />
       </Card>
       <Card title="Hoje, hora a hora" description="Mensagens de membros e threads abertas." className="lg:col-span-7">
         <TodayChart hoje={data.live.hoje} />

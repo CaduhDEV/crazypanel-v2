@@ -210,43 +210,10 @@ export interface TicketEvent {
 // ---------------------------------------------------------------------------
 // Categorias e motivos de encerramento (valores salvos no banco)
 // ---------------------------------------------------------------------------
-export const TICKET_CATEGORIES = [
-  { value: "duvida", label: "Dúvida" },
-  { value: "tecnico", label: "Técnico" },
-  { value: "comercial", label: "Comercial" },
-  { value: "comunidade", label: "Comunidade" },
-] as const;
-
-export type TicketCategory = (typeof TICKET_CATEGORIES)[number]["value"];
-
-/** Subcategorias (palavras-chave), cada uma de uma categoria. */
-export const TICKET_TOPICS = [
-  { value: "funil", label: "Funil", category: "duvida" },
-  { value: "disparos", label: "Disparos", category: "duvida" },
-  { value: "whatsapp", label: "WhatsApp", category: "duvida" },
-  { value: "integracoes", label: "Integrações", category: "duvida" },
-  { value: "envio", label: "Envio", category: "tecnico" },
-  { value: "instancia", label: "Instância", category: "tecnico" },
-  { value: "tela", label: "Tela", category: "tecnico" },
-  { value: "upgrade", label: "Upgrade", category: "comercial" },
-  { value: "pagamento", label: "Pagamento", category: "comercial" },
-  { value: "cancelamento", label: "Cancelamento", category: "comercial" },
-  { value: "sugestao", label: "Sugestão", category: "comunidade" },
-  { value: "elogio", label: "Elogio", category: "comunidade" },
-  { value: "offtopic", label: "Off-topic", category: "comunidade" },
-] as const satisfies readonly { value: string; label: string; category: TicketCategory }[];
-
-export type TicketTopic = (typeof TICKET_TOPICS)[number]["value"];
-
-export const topicsOf = (category: TicketCategory | null) => TICKET_TOPICS.filter((t) => t.category === category);
-
-/** "Dúvida · Funil" (ou só a categoria). */
-export function classificationLabel(category: string | null | undefined, topic?: string | null): string | null {
-  const c = TICKET_CATEGORIES.find((x) => x.value === category)?.label;
-  if (!c) return null;
-  const t = TICKET_TOPICS.find((x) => x.value === topic)?.label;
-  return t ? `${c} · ${t}` : c;
-}
+/** Chave de uma categoria (tabela ticket_categories; as opções vêm de lib/taxonomy). */
+export type TicketCategory = string;
+/** Chave de uma subcategoria (tabela ticket_topics). */
+export type TicketTopic = string;
 
 export const RESOLVED_BY = [
   { value: "community", label: "Comunidade", hint: "Um membro ou parceiro resolveu" },

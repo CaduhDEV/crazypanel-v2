@@ -5,6 +5,7 @@ import { getUazapi } from "@/lib/uazapi/instance";
 import { mediaUrl, storeFile } from "@/lib/media";
 import { loadCommunityReport, reportPeriod, type CommunityReport } from "@/lib/reports/data";
 import { periodRange, type MetricsPeriod } from "@/lib/reports/period";
+import { getTaxonomy } from "@/lib/taxonomy-server";
 import { buildReportPdf, summaryLine } from "@/lib/reports/pdf";
 
 // Somente servidor. Emissão do relatório oficial: numera, gera o PDF, guarda no
@@ -44,7 +45,7 @@ export async function previewReport(period: MetricsPeriod) {
   const { inicio, fim } = periodRange(period);
   const report = await loadCommunityReport(inicio, fim);
   const { code } = verification(report, null);
-  return { pdf: buildReportPdf(report, { number: null, verification: code }), fileName: reportFileName(null, fim) };
+  return { pdf: buildReportPdf(report, { number: null, verification: code, taxonomy: await getTaxonomy() }), fileName: reportFileName(null, fim) };
 }
 
 export async function issueReport(opts: { trigger: "schedule" | "manual"; requestedBy?: string | null }): Promise<IssuedReport> {
@@ -71,7 +72,7 @@ export async function issueReport(opts: { trigger: "schedule" | "manual"; reques
   const number = reportNumber(id);
 
   const { hash, code } = verification(report, number);
-  const pdf = buildReportPdf(report, { number, verification: code });
+  const pdf = buildReportPdf(report, { number, verification: code, taxonomy: await getTaxonomy() });
   const fileName = reportFileName(number, fim);
   const month = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit" }).format(fim).replace("-", "/");
   const path = `reports/${month}/${fileName}`;

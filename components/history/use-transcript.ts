@@ -4,7 +4,9 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { contactLabel } from "@/lib/utils";
-import { classificationLabel, CLOSE_REASONS, type ContactKind, type Message, type TicketEvent } from "@/lib/types";
+import { CLOSE_REASONS, type ContactKind, type Message, type TicketEvent } from "@/lib/types";
+import { classificationLabel, type Taxonomy } from "@/lib/taxonomy";
+import { useApp } from "@/components/app/app-context";
 import type { Member } from "@/components/app/app-context";
 import { resolveAuthor, type Author } from "@/components/conversation/message-utils";
 import { useThread, useTicket, useTicketEvents, type ThreadData, type ThreadTicket } from "@/components/conversation/use-thread";
@@ -30,9 +32,11 @@ export interface Transcript {
   leads: TranscriptLead[];
   leadById: Map<string, TranscriptLead>;
   timeline: TimelineItem[];
+  taxonomy: Taxonomy;
 }
 
 export function useTranscript(ticketId: string) {
+  const { taxonomy } = useApp();
   const ticket = useTicket(ticketId);
   const thread = useThread(ticketId);
   const events = useTicketEvents(ticketId);
@@ -91,8 +95,9 @@ export function useTranscript(ticketId: string) {
       leads: list,
       leadById: new Map(list.map((l) => [l.id, l])),
       timeline,
+      taxonomy,
     };
-  }, [ticket.data, thread.data, events.data, leads.data]);
+  }, [ticket.data, thread.data, events.data, leads.data, taxonomy]);
 
   return { data, isLoading: ticket.isLoading || thread.isLoading || leads.isLoading, notFound: !ticket.isLoading && !ticket.data };
 }
@@ -110,7 +115,7 @@ export function authorOf(m: Message, t: Transcript, memberById: Map<string, Memb
   return { ...author, company: !m.from_me && lead?.company ? lead.company.name : null };
 }
 
-export const categoryLabel = (v: string | null, topic?: string | null) => classificationLabel(v, topic);
+export const categoryLabel = (t: Transcript, v: string | null, topic?: string | null) => classificationLabel(t.taxonomy, v, topic);
 
 /** Texto curto dos eventos do atendimento (transferências, entradas, finalização…). */
 export function eventText(e: TicketEvent, t: Transcript, memberById: Map<string, Member>): string {
@@ -135,7 +140,7 @@ export function eventText(e: TicketEvent, t: Transcript, memberById: Map<string,
       return `${actor ?? "Alguém"} devolveu para a fila`;
     case "closed": {
       const reason = (d.reason as keyof typeof CLOSE_REASONS) ?? "resolved";
-      const category = categoryLabel(d.category as string | null, d.topic as string | null);
+      const category = categoryLabel(t, d.category as string | null, d.topic as string | null);
       return reason === "resolved" ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}` : CLOSE_REASONS[reason];
     }
     case "message_moved":

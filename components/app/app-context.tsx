@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useMemo } from "react";
 import type { AppSettings, Profile } from "@/lib/types";
+import type { Taxonomy } from "@/lib/taxonomy";
 
 export type Member = Pick<Profile, "id" | "name" | "avatar_url" | "role">;
 
@@ -11,6 +12,8 @@ interface AppContextValue {
   members: Member[];
   memberById: Map<string, Member>;
   isAdmin: boolean;
+  /** Categorias e subcategorias (Configurações). */
+  taxonomy: Taxonomy;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -19,11 +22,13 @@ export function AppProvider({
   profile,
   settings,
   members,
+  taxonomy,
   children,
 }: {
   profile: Profile;
   settings: AppSettings;
   members: Member[];
+  taxonomy: Taxonomy;
   children: React.ReactNode;
 }) {
   const value = useMemo<AppContextValue>(
@@ -33,8 +38,9 @@ export function AppProvider({
       members,
       memberById: new Map(members.map((m) => [m.id, m])),
       isAdmin: profile.role === "admin",
+      taxonomy,
     }),
-    [profile, settings, members],
+    [profile, settings, members, taxonomy],
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

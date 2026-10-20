@@ -7,6 +7,7 @@ import { PushPermissionPrompt } from "@/components/app/browser-notifications";
 import { useTicketsRealtime } from "@/components/app/use-open-tickets";
 import { MobileNav, Sidebar } from "@/components/app/sidebar";
 import type { AppSettings, Profile } from "@/lib/types";
+import type { Taxonomy } from "@/lib/taxonomy";
 
 function RealtimeBridge() {
   useTicketsRealtime();
@@ -17,17 +18,19 @@ export function AppShell({
   profile,
   settings,
   members,
+  taxonomy,
   sidebarCollapsed,
   children,
 }: {
   profile: Profile;
   settings: AppSettings;
   members: Member[];
+  taxonomy: Taxonomy;
   sidebarCollapsed: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <AppProvider profile={profile} settings={settings} members={members}>
+    <AppProvider profile={profile} settings={settings} members={members} taxonomy={taxonomy}>
       <PresenceProvider>
         <RealtimeBridge />
         <TicketNotifier />

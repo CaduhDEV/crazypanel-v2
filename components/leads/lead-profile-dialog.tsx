@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { callApi } from "@/lib/api-client";
 import { deleteContact, getContactDeletionImpact } from "@/lib/leads/actions";
 import { cn, contactLabel, formatDuration, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, CONTACT_KIND_LABELS, classificationLabel, type Company, type Contact } from "@/lib/types";
+import { CLOSE_REASONS, CONTACT_KIND_LABELS, type Company, type Contact } from "@/lib/types";
+import { classificationLabel } from "@/lib/taxonomy";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export function LeadProfileDialog({ contactId, onClose, onDeleted }: { contactId
 }
 
 function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: () => void }) {
-  const { memberById, isAdmin } = useApp();
+  const { memberById, isAdmin, taxonomy } = useApp();
   const queryClient = useQueryClient();
   const [refreshing, startRefresh] = useTransition();
   const now = useNow();
@@ -316,7 +317,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
           <ul className="col-span-2 grid gap-1.5 sm:grid-cols-2">
             {data.tickets.map((t) => {
               const assignee = t.assignee_id ? memberById.get(t.assignee_id)?.name : null;
-              const category = classificationLabel(t.category, t.topic);
+              const category = classificationLabel(taxonomy, t.category, t.topic);
               return (
                 <li key={t.id}>
                   <Link href={`/atendimento?ticket=${t.id}`} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs hover:bg-accent/40">

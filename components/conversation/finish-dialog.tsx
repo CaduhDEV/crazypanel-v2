@@ -6,15 +6,9 @@ import { toast } from "sonner";
 import { closeTicket } from "@/lib/tickets/actions";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatRelative } from "@/lib/utils";
-import {
-  RESOLVED_BY,
-  TICKET_CATEGORIES,
-  topicsOf,
-  type Message,
-  type ResolvedBy,
-  type TicketCategory,
-  type TicketTopic,
-} from "@/lib/types";
+import { RESOLVED_BY, type Message, type ResolvedBy, type TicketCategory, type TicketTopic } from "@/lib/types";
+import { activeCategories, isActivePair, topicsOf } from "@/lib/taxonomy";
+import { useApp } from "@/components/app/app-context";
 import { Button } from "@/components/ui/button";
 import { Label, Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/misc";
@@ -82,6 +76,7 @@ export function FinishDialog({
   const [resolution, setResolution] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const queryClient = useQueryClient();
+  const { taxonomy } = useApp();
   const parallel = mode === "parallel";
   const resolved = mode === "resolved";
 
@@ -89,7 +84,7 @@ export function FinishDialog({
   const [openedAs, setOpenedAs] = useState(mode);
   if (mode !== openedAs) {
     setOpenedAs(mode);
-    if (mode === "parallel") {
+    if (mode === "parallel" && isActivePair(taxonomy, "comunidade", "offtopic")) {
       setCategory((c) => c ?? "comunidade");
       setTopic((t) => t ?? "offtopic");
     }
@@ -156,16 +151,16 @@ export function FinishDialog({
 
         <Choices
           legend="Categoria"
-          options={TICKET_CATEGORIES}
+          options={activeCategories(taxonomy).map((c) => ({ value: c.key, label: c.label }))}
           value={category}
           columns={4}
           onChange={(v) => {
             setCategory(v);
-            if (!topicsOf(v).some((t) => t.value === topic)) setTopic(null);
+            if (!topicsOf(taxonomy, v).some((t) => t.key === topic)) setTopic(null);
           }}
         />
 
-        {category && <Choices legend="Subcategoria" options={topicsOf(category)} value={topic} onChange={setTopic} columns={4} />}
+        {category && <Choices legend="Subcategoria" options={topicsOf(taxonomy, category).map((t) => ({ value: t.key, label: t.label }))} value={topic} onChange={setTopic} columns={4} />}
 
         {resolved && (
           <fieldset className="flex flex-col gap-2.5">

@@ -26,7 +26,8 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { MESSAGE_COLUMNS, MESSAGE_KINDS, type MessageFilters, type MessagePeriod } from "@/lib/messages/query";
 import { cn, contactLabel, formatPhone, nameColor, pluralize } from "@/lib/utils";
-import { classificationLabel, TICKET_CATEGORIES, topicsOf, type ContactKind, type Message, type TicketCategory } from "@/lib/types";
+import { type ContactKind, type Message } from "@/lib/types";
+import { classificationLabel } from "@/lib/taxonomy";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,7 +127,7 @@ export function MessagesView({
   groups: { jid: string; name: string | null }[];
   error: string | null;
 }) {
-  const { memberById } = useApp();
+  const { memberById, taxonomy } = useApp();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -153,7 +154,7 @@ export function MessagesView({
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const hasFilters = !!(filters.q || filters.period !== "30" || filters.group || filters.kind || filters.category);
-  const topics = filters.category ? topicsOf(filters.category as TicketCategory) : [];
+  const topics = filters.category ? taxonomy.topics.filter((t) => t.category === filters.category) : [];
 
   return (
     <main className="flex flex-1 flex-col gap-4 px-4 py-5 sm:px-6">
@@ -232,9 +233,10 @@ export function MessagesView({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>Todas as categorias</SelectItem>
-              {TICKET_CATEGORIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
+              {taxonomy.categories.map((c) => (
+                <SelectItem key={c.key} value={c.key}>
                   {c.label}
+                  {c.archived ? " (arquivada)" : ""}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -247,8 +249,9 @@ export function MessagesView({
               <SelectContent>
                 <SelectItem value={ALL}>Todas as subcategorias</SelectItem>
                 {topics.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
+                  <SelectItem key={t.key} value={t.key}>
                     {t.label}
+                    {t.archived ? " (arquivada)" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -291,7 +294,7 @@ export function MessagesView({
               const a = authorOf(m, memberById);
               const k = kindOf(m);
               const Icon = KIND_ICON[k] ?? MessageSquareText;
-              const classification = classificationLabel(m.category, m.topic);
+              const classification = classificationLabel(taxonomy, m.category, m.topic);
               return (
                 <tr
                   key={m.id}
@@ -385,7 +388,7 @@ async function neighbor(m: MessageRow, dir: "prev" | "next"): Promise<MessageRow
 }
 
 function MessageContext({ initial }: { initial: MessageRow }) {
-  const { memberById } = useApp();
+  const { memberById, taxonomy } = useApp();
   const [current, setCurrent] = useState(initial);
   const { data, isFetching } = useQuery({
     queryKey: ["message-context", current.id],
@@ -411,7 +414,7 @@ function MessageContext({ initial }: { initial: MessageRow }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [data]);
 
-  const classification = classificationLabel(current.category, current.topic);
+  const classification = classificationLabel(taxonomy, current.category, current.topic);
   const SOURCE: Record<string, string> = { atendimento: "do atendimento", regras: "por regras", herdada: "herdada da conversa" };
 
   return (

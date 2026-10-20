@@ -4,6 +4,7 @@ import { getSettings } from "@/lib/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app/page-header";
 import { SettingsForm } from "@/components/admin/settings-form";
+import { TaxonomySettings } from "@/components/admin/taxonomy-settings";
 import type { IssuedReportRow, ReportPerson } from "@/components/admin/report-settings";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -25,6 +26,9 @@ export default async function ConfiguracoesPage() {
         people={((people ?? []) as ReportPerson[]).map((p) => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url, whatsapp: p.whatsapp ?? null }))}
         reports={(reports ?? []) as IssuedReportRow[]}
       />
+      <div className="max-w-5xl px-4 pb-8 sm:px-6">
+        <TaxonomySettings />
+      </div>
     </>
   );
 }

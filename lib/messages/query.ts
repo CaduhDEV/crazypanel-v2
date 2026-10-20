@@ -1,5 +1,4 @@
 import type { createClient } from "@/lib/supabase/server";
-import { TICKET_CATEGORIES, TICKET_TOPICS } from "@/lib/types";
 
 // Admin → Mensagens: todas as mensagens dos grupos, com filtros pela URL.
 
@@ -33,10 +32,12 @@ export interface MessageFilters {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const KEY_RE = /^[a-z0-9_]{2,40}$/;
 
 export function parseMessageFilters(p: Record<string, string | undefined | null>): MessageFilters {
-  const category = TICKET_CATEGORIES.some((c) => c.value === p.categoria) ? p.categoria! : "";
-  const topic = TICKET_TOPICS.some((t) => t.value === p.subcategoria && t.category === category) ? p.subcategoria! : "";
+  // Chaves de categoria/subcategoria (tabelas): uma desconhecida só não acha nada.
+  const category = KEY_RE.test(p.categoria ?? "") ? p.categoria! : "";
+  const topic = category && KEY_RE.test(p.subcategoria ?? "") ? p.subcategoria! : "";
   return {
     q: p.q?.trim().slice(0, 80) ?? "",
     period: (PERIODS.includes(p.periodo as MessagePeriod) ? p.periodo : "30") as MessagePeriod,

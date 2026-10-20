@@ -1,5 +1,4 @@
 import type { createClient } from "@/lib/supabase/server";
-import { TICKET_CATEGORIES } from "@/lib/types";
 
 // Histórico de atendimentos: filtros da tela (via URL) e a consulta.
 
@@ -18,6 +17,8 @@ export interface HistoryFilters {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+// Chave de categoria (ticket_categories): uma desconhecida só não acha nada.
+const KEY_RE = /^[a-z0-9_]{2,40}$/;
 
 export function parseHistoryFilters(p: Record<string, string | undefined | null>): HistoryFilters {
   const category = p.categoria ?? "";
@@ -26,7 +27,7 @@ export function parseHistoryFilters(p: Record<string, string | undefined | null>
     status: (STATUSES.includes(p.status as HistoryStatus) ? p.status : "todos") as HistoryStatus,
     group: p.grupo?.endsWith("@g.us") ? p.grupo : "",
     assignee: p.responsavel === "sem" || UUID_RE.test(p.responsavel ?? "") ? p.responsavel! : "",
-    category: TICKET_CATEGORIES.some((c) => c.value === category) ? category : "",
+    category: KEY_RE.test(category) ? category : "",
     from: DATE_RE.test(p.de ?? "") ? p.de! : "",
     to: DATE_RE.test(p.ate ?? "") ? p.ate! : "",
   };

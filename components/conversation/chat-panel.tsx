@@ -3,7 +3,8 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, CircleCheck, Coffee, Loader2, MessagesSquare, PanelRightClose, PanelRightOpen, Upload, X } from "lucide-react";
 import { cn, contactLabel, formatDayLabel, formatPhone, formatTime } from "@/lib/utils";
-import { classificationLabel, CLOSE_REASONS, type Message, type TicketEvent } from "@/lib/types";
+import { CLOSE_REASONS, type Message, type TicketEvent } from "@/lib/types";
+import { classificationLabel, type Taxonomy } from "@/lib/taxonomy";
 import { Avatar, AvatarStack } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Skeleton, Tip } from "@/components/ui/misc";
@@ -37,7 +38,7 @@ export function ChatPanel({
   onNavigate: (ticketId: string) => void;
   onFinished: () => void;
 }) {
-  const { memberById, profile } = useApp();
+  const { memberById, profile, taxonomy } = useApp();
   const { viewersByTicket, setViewingTicket } = usePresence();
   const { data: ticket, isLoading: ticketLoading } = useTicket(ticketId);
   const { data: thread, isLoading: threadLoading } = useThread(ticketId);
@@ -216,7 +217,7 @@ export function ChatPanel({
                     onSplit={onNavigate}
                   />
                 ) : (
-                  <EventLine event={item.event} memberById={memberById} leadNameById={leadNameById} />
+                  <EventLine event={item.event} memberById={memberById} leadNameById={leadNameById} taxonomy={taxonomy} />
                 )}
               </Fragment>
             );
@@ -285,10 +286,12 @@ function EventLine({
   event,
   memberById,
   leadNameById,
+  taxonomy,
 }: {
   event: TicketEvent;
   memberById: Map<string, Member>;
   leadNameById: Map<string, string>;
+  taxonomy: Taxonomy;
 }) {
   const actor = event.actor_id ? memberById.get(event.actor_id)?.name : null;
   const data = event.data as Record<string, string | boolean | null>;
@@ -330,7 +333,7 @@ function EventLine({
       break;
     case "closed": {
       const reason = (data.reason as keyof typeof CLOSE_REASONS) ?? "resolved";
-      const category = classificationLabel(data.category as string | null, data.topic as string | null);
+      const category = classificationLabel(taxonomy, data.category as string | null, data.topic as string | null);
       text = reason === "resolved" ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}` : `${CLOSE_REASONS[reason]}${actor ? ` · ${actor}` : ""}`;
       break;
     }

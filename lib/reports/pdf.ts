@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import { TICKET_CATEGORIES, TICKET_TOPICS } from "@/lib/types";
+import { categoryLabel, type Taxonomy } from "@/lib/taxonomy";
 import { indicators, pct, type CommunityReport, type ReportSummary } from "@/lib/reports/data";
 
 // Somente servidor. Relatório oficial das comunidades em PDF (A4, vetorial).
@@ -56,14 +56,14 @@ const threadsLabel = (n: number) => `${nf0.format(n)} ${n === 1 ? "thread" : "th
 const fmtDate = (iso: string, withTime = false) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }).format(new Date(iso));
 
-const CATEGORY_LABEL = Object.fromEntries(TICKET_CATEGORIES.map((c) => [c.value, c.label])) as Record<string, string>;
-const TOPIC_LABEL = Object.fromEntries(TICKET_TOPICS.map((t) => [t.value, t.label])) as Record<string, string>;
 
 export interface ReportPdfOptions {
   /** Número oficial (ex.: "0007"); null = prévia. */
   number: string | null;
   /** Código impresso no rodapé para conferir a autenticidade. */
   verification: string;
+  /** Nomes das categorias e subcategorias. */
+  taxonomy: Taxonomy;
 }
 
 export function buildReportPdf(report: CommunityReport, opts: ReportPdfOptions): ArrayBuffer {
@@ -447,7 +447,11 @@ export function buildReportPdf(report: CommunityReport, opts: ReportPdfOptions):
   section("Temas", "Categoria e assunto informados ao finalizar. Temas recorrentes viram tutorial, mensagem fixada ou correção no produto.");
   const themes = new Map<string, number>();
   for (const t of report.temas) {
-    const label = t.subtema ? (TOPIC_LABEL[t.subtema] ?? t.subtema) : t.categoria ? (CATEGORY_LABEL[t.categoria] ?? t.categoria) : "Sem categoria";
+    const label = t.subtema
+      ? (opts.taxonomy.topics.find((x) => x.key === t.subtema)?.label ?? t.subtema)
+      : t.categoria
+        ? (categoryLabel(opts.taxonomy, t.categoria) ?? t.categoria)
+        : "Sem categoria";
     themes.set(label, (themes.get(label) ?? 0) + t.threads);
   }
   const themeRows = [...themes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);

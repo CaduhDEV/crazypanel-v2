@@ -10,8 +10,10 @@ import { getSettings } from "@/lib/settings";
 import { kindFromMime, MAX_MEDIA_BYTES, mediaPath, mediaUrl } from "@/lib/media";
 import { r2Head, r2Key, r2PresignPut } from "@/lib/r2";
 import { storeIncomingMedia } from "@/lib/webhook/process";
-import type { Message, Profile, ResolvedBy, TicketCategory, TicketTopic } from "@/lib/types";
-import { RESOLVED_BY, TICKET_CATEGORIES, TICKET_TOPICS, VOICE_NOTE_PREFIX } from "@/lib/types";
+import type { Message, Profile, ResolvedBy } from "@/lib/types";
+import { RESOLVED_BY, VOICE_NOTE_PREFIX } from "@/lib/types";
+import { isActivePair } from "@/lib/taxonomy";
+import { getTaxonomy } from "@/lib/taxonomy-server";
 
 const id = z.uuid({ error: "Identificador inválido." });
 
@@ -395,24 +397,19 @@ export async function claimNextTicket(): Promise<ActionResult<string | null>> {
   });
 }
 
-const categoryValues = TICKET_CATEGORIES.map((c) => c.value) as [TicketCategory, ...TicketCategory[]];
-
-const topicValues = TICKET_TOPICS.map((t) => t.value) as [TicketTopic, ...TicketTopic[]];
 const resolvedByValues = RESOLVED_BY.map((r) => r.value) as [ResolvedBy, ...ResolvedBy[]];
+// Chaves das tabelas ticket_categories/ticket_topics; o par é conferido na ação.
+const taxonomyKey = (error: string) => z.string({ error }).regex(/^[a-z0-9_]{2,40}$/, { error });
 
 const closeSchema = z
   .object({
     ticketId: id,
     reason: z.enum(["resolved", "parallel"]),
-    category: z.enum(categoryValues, { error: "Escolha a categoria do atendimento." }),
-    topic: z.enum(topicValues, { error: "Escolha a subcategoria do atendimento." }),
+    category: taxonomyKey("Escolha a categoria do atendimento."),
+    topic: taxonomyKey("Escolha a subcategoria do atendimento."),
     resolvedBy: z.enum(resolvedByValues).optional(),
     resolutionMessageId: id.optional(),
     note: z.string().trim().max(2000).optional(),
-  })
-  .refine((d) => TICKET_TOPICS.some((t) => t.value === d.topic && t.category === d.category), {
-    error: "Essa subcategoria não é da categoria escolhida.",
-    path: ["topic"],
   })
   .refine((d) => d.reason !== "resolved" || !!d.resolvedBy, {
     error: "Diga quem resolveu: comunidade, equipe ou os dois.",
@@ -421,8 +418,11 @@ const closeSchema = z
 
 export async function closeTicket(input: z.input<typeof closeSchema>): Promise<ActionResult<void>> {
   return runAction(closeSchema, input, async ({ ticketId, reason, category, topic, resolvedBy, resolutionMessageId, note }) => {
-    const [profile, ticket] = await Promise.all([requireMember(), loadTicket(ticketId)]);
+    const [profile, ticket, taxonomy] = await Promise.all([requireMember(), loadTicket(ticketId), getTaxonomy()]);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
+    if (!isActivePair(taxonomy, category, topic)) {
+      throw new ActionError("Essa categoria ou subcategoria não está mais disponível. Feche e abra o atendimento de novo para ver as opções atuais.");
+    }
 
     const db = createAdminClient();
     // Só fecha se ainda estiver aberto: dois atendentes finalizando juntos não

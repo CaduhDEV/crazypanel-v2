@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { updateContactNotes } from "@/lib/leads/actions";
 import { cn, contactLabel, formatPhone, formatRelative, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, CONTACT_KIND_LABELS, classificationLabel, type Ticket } from "@/lib/types";
+import { CLOSE_REASONS, CONTACT_KIND_LABELS, type Ticket } from "@/lib/types";
+import { classificationLabel } from "@/lib/taxonomy";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ type PanelData = {
 
 
 export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavigate?: (ticketId: string) => void }) {
-  const { isAdmin } = useApp();
+  const { isAdmin, taxonomy } = useApp();
   const queryClient = useQueryClient();
   const contact = ticket.contact;
   const [linkOpen, setLinkOpen] = useState(false);
@@ -161,7 +162,7 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
               <li key={t.id} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs">
                 <span className="flex items-center justify-between gap-2 text-muted-foreground">
                   <span>#{t.number} · {formatRelative(t.opened_at)}</span>
-                  <span>{t.status === "open" ? "Aberto" : (classificationLabel(t.category, t.topic) ?? CLOSE_REASONS[t.close_reason ?? "resolved"])}</span>
+                  <span>{t.status === "open" ? "Aberto" : (classificationLabel(taxonomy, t.category, t.topic) ?? CLOSE_REASONS[t.close_reason ?? "resolved"])}</span>
                 </span>
                 <span className="line-clamp-2">{t.subject}</span>
               </li>

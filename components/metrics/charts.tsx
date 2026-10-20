@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Label, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { TICKET_CATEGORIES, TICKET_TOPICS } from "@/lib/types";
+import { activeCategories, categoryColor, categoryLabel, type Taxonomy } from "@/lib/taxonomy";
 import type { CommunityReport, LiveReport } from "@/lib/reports/data";
 import { fInt } from "@/lib/reports/format";
 import { cn } from "@/lib/utils";
@@ -410,18 +410,11 @@ export function TodayChart({
   );
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  duvida: "var(--primary)",
-  tecnico: "var(--destructive)",
-  comercial: "var(--warning)",
-  comunidade: "var(--success)",
-};
-
 /** Subcategorias, coloridas pela categoria. */
-export function CategoryBars({ categorias, className }: { categorias: LiveReport["categorias"]; className?: string }) {
+export function CategoryBars({ categorias, taxonomy, className }: { categorias: LiveReport["categorias"]; taxonomy: Taxonomy; className?: string }) {
   const data = categorias
     .map((c) => ({
-      label: TICKET_TOPICS.find((t) => t.value === c.subcategoria)?.label ?? TICKET_CATEGORIES.find((x) => x.value === c.categoria)?.label ?? "Outro",
+      label: taxonomy.topics.find((t) => t.key === c.subcategoria)?.label ?? categoryLabel(taxonomy, c.categoria) ?? "Outro",
       categoria: c.categoria,
       threads: c.threads,
     }))
@@ -438,7 +431,7 @@ export function CategoryBars({ categorias, className }: { categorias: LiveReport
         <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel={false} indicator="dot" />} />
         <Bar dataKey="threads" radius={4}>
           {data.map((d) => (
-            <Cell key={d.label} fill={CATEGORY_COLORS[d.categoria] ?? COLORS.equipe} />
+            <Cell key={d.label} fill={categoryColor(taxonomy, d.categoria)} />
           ))}
         </Bar>
       </BarChart>
@@ -446,12 +439,12 @@ export function CategoryBars({ categorias, className }: { categorias: LiveReport
   );
 }
 
-export function CategoryLegend() {
+export function CategoryLegend({ taxonomy }: { taxonomy: Taxonomy }) {
   return (
     <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-      {TICKET_CATEGORIES.map((c) => (
-        <span key={c.value} className="flex items-center gap-1.5">
-          <span className="size-2 rounded-[2px]" style={{ backgroundColor: CATEGORY_COLORS[c.value] }} />
+      {activeCategories(taxonomy).map((c) => (
+        <span key={c.key} className="flex items-center gap-1.5">
+          <span className="size-2 rounded-[2px]" style={{ backgroundColor: categoryColor(taxonomy, c.key) }} />
           {c.label}
         </span>
       ))}
