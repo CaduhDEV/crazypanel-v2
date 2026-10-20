@@ -8,6 +8,7 @@ import { slaInfo, type SlaState } from "@/lib/sla";
 import { contactLabel } from "@/lib/utils";
 import type { AppSettings, TicketWithRelations } from "@/lib/types";
 import { fillTemplate, showBrowserNotification, type PushVars } from "@/components/app/browser-notifications";
+import { setTicketParam } from "@/components/conversation/ticket-url";
 
 // Preferência de som por navegador (conveniência local).
 const SOUND_KEY = "crazypanel:sound";
@@ -79,7 +80,14 @@ export function TicketNotifier() {
   const [userSound] = useSoundEnabled();
   const enabled = userSound && settings.push_sound;
   const router = useRouter();
-  const openTicket = useCallback((id: string) => router.push(`/atendimento?ticket=${id}`), [router]);
+  const openTicket = useCallback(
+    (id: string) => {
+      // Já no Inbox: abre a conversa sem recarregar a página.
+      if (window.location.pathname === "/atendimento") setTicketParam(id, "push");
+      else router.push(`/atendimento?ticket=${id}`);
+    },
+    [router],
+  );
   const known = useRef<Set<string> | null>(null);
   const phases = useRef(new Map<string, SlaState>());
 

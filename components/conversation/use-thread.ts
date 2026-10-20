@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Company, Contact, Message, MessageReaction, Ticket, TicketEvent, WaGroup } from "@/lib/types";
 
@@ -158,14 +158,45 @@ export function useTicketEvents(id: string) {
   });
 }
 
+const time = (iso: string) => Date.parse(iso) || 0;
+
+/**
+ * Coloca (ou atualiza) uma mensagem na conversa em cache, sem recarregar tudo.
+ * Devolve false quando falta algo para exibi-la (o contato ou a mensagem citada)
+ * e a conversa precisa ser buscada de novo.
+ */
+export function upsertThreadMessage(queryClient: QueryClient, ticketId: string, row: Message): boolean {
+  const data = queryClient.getQueryData<ThreadData>(threadKey(ticketId));
+  if (!data) return false;
+  const i = data.messages.findIndex((m) => m.id === row.id);
+  // Colunas que o evento não trouxe ficam como estavam.
+  const merged = i >= 0 ? { ...data.messages[i], ...row } : row;
+  const messages = data.messages.slice();
+  if (i >= 0) messages[i] = merged;
+  else messages.push(merged);
+  if (i < 0 || merged.sent_at !== data.messages[i].sent_at) messages.sort((x, y) => time(x.sent_at) - time(y.sent_at));
+  const quotedByWaId = merged.wa_id ? new Map(data.quotedByWaId).set(merged.wa_id, merged) : data.quotedByWaId;
+  queryClient.setQueryData<ThreadData>(threadKey(ticketId), { ...data, messages, quotedByWaId });
+  return !(merged.contact_id && !data.contacts.has(merged.contact_id)) && !(merged.quoted_wa_id && !quotedByWaId.has(merged.quoted_wa_id));
+}
+
+/** Tira da conversa em cache uma mensagem que não chegou a ser gravada. */
+export function removeThreadMessage(queryClient: QueryClient, ticketId: string, messageId: string) {
+  queryClient.setQueryData<ThreadData>(threadKey(ticketId), (data) => data && { ...data, messages: data.messages.filter((m) => m.id !== messageId) });
+}
+
 /** Realtime do atendimento aberto: mensagens, reações, histórico e o próprio ticket. */
 export function useThreadRealtime(id: string, messageIds: string[]) {
   const queryClient = useQueryClient();
-  const idsKey = messageIds.join(",");
+  // Mensagens deste atendimento, para filtrar as reações. Num ref: a inscrição não
+  // é refeita a cada mensagem nova (perderia eventos enquanto reconecta).
+  const watched = useRef(new Set<string>());
+  useEffect(() => {
+    watched.current = new Set(messageIds);
+  }, [messageIds]);
 
   useEffect(() => {
     const supabase = createClient();
-    const watched = new Set(idsKey ? idsKey.split(",") : []);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const refreshThread = () => {
       if (timer) clearTimeout(timer);
@@ -174,31 +205,48 @@ export function useThreadRealtime(id: string, messageIds: string[]) {
 
     const channel = supabase
       .channel(`ticket:${id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `ticket_id=eq.${id}` }, refreshThread)
+      // A mensagem vem inteira no evento: entra na conversa na hora, sem recarregar as outras.
+      .on<Message>("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `ticket_id=eq.${id}` }, (payload) => {
+        const row = payload.new as Message;
+        if (payload.eventType === "DELETE" || !row?.id || row.ticket_id !== id) return refreshThread();
+        if (!upsertThreadMessage(queryClient, id, row)) refreshThread();
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload) => {
         const row = (payload.new && "message_id" in payload.new ? payload.new : payload.old) as { message_id?: string };
-        if (row?.message_id && watched.has(row.message_id)) refreshThread();
+        if (row?.message_id && watched.current.has(row.message_id)) refreshThread();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "ticket_events", filter: `ticket_id=eq.${id}` }, () =>
-        queryClient.invalidateQueries({ queryKey: eventsKey(id) }),
-      )
+      .on<TicketEvent>("postgres_changes", { event: "*", schema: "public", table: "ticket_events", filter: `ticket_id=eq.${id}` }, (payload) => {
+        queryClient.invalidateQueries({ queryKey: eventsKey(id) });
+        // Mensagens saíram deste atendimento (separada, mesclada, lead retirado): o
+        // filtro do Realtime não avisa quem sai, então recarrega a conversa.
+        const type = (payload.new as Partial<TicketEvent>)?.type;
+        if (type === "message_moved" || type === "merged" || type === "participant_removed") refreshThread();
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "ticket_context_suggestions", filter: `ticket_id=eq.${id}` }, () =>
         queryClient.invalidateQueries({ queryKey: suggestionsKey(id) }),
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "ticket_participants", filter: `ticket_id=eq.${id}` }, () =>
         queryClient.invalidateQueries({ queryKey: participantsKey(id) }),
       )
-      // Atendimento mudou (inclusive juntado a outro): as mensagens podem ter saído
-      // dele, e o filtro do Realtime não avisa quem sai, então recarrega as duas.
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tickets", filter: `id=eq.${id}` }, () => {
-        queryClient.invalidateQueries({ queryKey: ticketKey(id) });
-        refreshThread();
+      // O atendimento muda a cada mensagem (prévia, espera do SLA): aplica a linha do
+      // evento. Troca de dono ou de status busca de novo (contato e empresa vêm junto).
+      .on<Ticket>("postgres_changes", { event: "UPDATE", schema: "public", table: "tickets", filter: `id=eq.${id}` }, (payload) => {
+        const row = payload.new as Partial<Ticket>;
+        const current = queryClient.getQueryData<ThreadTicket | null>(ticketKey(id));
+        if (!current || !row.id || (row.contact_id && row.contact_id !== current.contact_id) || (row.status && row.status !== current.status)) {
+          queryClient.invalidateQueries({ queryKey: ticketKey(id) });
+          return;
+        }
+        queryClient.setQueryData<ThreadTicket>(ticketKey(id), { ...current, ...row, contact: current.contact, group: current.group });
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Ao reconectar, pode ter perdido eventos.
+        if (status === "SUBSCRIBED") refreshThread();
+      });
 
     return () => {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
-  }, [id, idsKey, queryClient]);
+  }, [id, queryClient]);
 }

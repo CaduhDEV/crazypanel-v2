@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Copy, Loader2, MessageSquareText, RefreshCw, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { refreshContactCrm } from "@/lib/crm-actions";
+import { callApi } from "@/lib/api-client";
 import { deleteContact, getContactDeletionImpact } from "@/lib/leads/actions";
 import { cn, contactLabel, formatDuration, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
 import { CLOSE_REASONS, CONTACT_KIND_LABELS, classificationLabel, type Company, type Contact } from "@/lib/types";
@@ -162,7 +162,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
   };
   const refreshCrm = () =>
     startRefresh(async () => {
-      const res = await refreshContactCrm({ contactId: c.id, force: true });
+      const res = await callApi<boolean>(`/api/contacts/${c.id}/crm?force=1`, { method: "POST" });
       if (!res.ok) return void toast.error(res.error);
       await queryClient.invalidateQueries({ queryKey: profileKey(c.id) });
     });

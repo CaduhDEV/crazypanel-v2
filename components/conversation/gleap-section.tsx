@@ -4,7 +4,7 @@ import { useEffect, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, RefreshCw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { refreshGleapTickets } from "@/lib/gleap-actions";
+import { callApi } from "@/lib/api-client";
 import { formatRelative } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   gleapBoardLabel,
   useGleapTicketsByContact,
 } from "@/components/app/use-gleap-tickets";
+
+const refreshGleapTickets = () => callApi<{ rows: number; skipped: boolean }>("/api/gleap/tickets", { method: "POST" });
 
 /** Aviso de conflito de canais: o lead também tem chamado ativo no Gleap. */
 export function GleapSection({ contactId }: { contactId: string }) {

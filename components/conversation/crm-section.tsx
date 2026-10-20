@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useTransition } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { Fragment, useTransition } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { refreshContactCrm } from "@/lib/crm-actions";
+import { callApi } from "@/lib/api-client";
 import { formatRelative, formatTaxId } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Tip } from "@/components/ui/misc";
+import { Skeleton, Tip } from "@/components/ui/misc";
 import { useNow } from "@/components/app/use-now";
 import { ticketKey, type ThreadTicket } from "@/components/conversation/use-thread";
 
@@ -25,23 +25,43 @@ export function CrmSection({ ticket }: { ticket: ThreadTicket }) {
   const contact = ticket.contact!;
   const now = useNow();
 
-  const refresh = (force: boolean) =>
+  // Ao abrir o lead: consulta o CRM se o cache (10 min) venceu. É uma rota, não
+  // Server Action, para não segurar o envio de mensagens enquanto o CRM responde.
+  const { isFetching } = useQuery({
+    queryKey: ["contact", contact.id, "crm"],
+    enabled: !!contact.phone,
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const res = await callApi<boolean>(`/api/contacts/${contact.id}/crm`, { method: "POST" });
+      if (res.ok && res.data) await queryClient.invalidateQueries({ queryKey: ticketKey(ticket.id) });
+      return res.ok && res.data;
+    },
+  });
+
+  const refresh = () =>
     start(async () => {
-      const res = await refreshContactCrm({ contactId: contact.id, force });
-      if (!res.ok) {
-        if (force) toast.error(res.error);
-        return;
-      }
+      const res = await callApi<boolean>(`/api/contacts/${contact.id}/crm?force=1`, { method: "POST" });
+      if (!res.ok) return void toast.error(res.error);
       if (res.data) await queryClient.invalidateQueries({ queryKey: ticketKey(ticket.id) });
     });
 
-  // Ao abrir o lead: consulta o CRM se o cache (10 min) venceu.
-  useEffect(() => {
-    if (contact.phone) refresh(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contact.id]);
-
-  if (!contact.crm_checked_at) return null;
+  if (!contact.crm_checked_at) {
+    // Primeira consulta deste lead: esqueleto enquanto o CRM responde.
+    if (!isFetching) return null;
+    return (
+      <section className="flex flex-col gap-2" aria-busy="true">
+        <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">CRM DataCrazy</h3>
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+          {[16, 28, 24].map((w, i) => (
+            <Fragment key={i}>
+              <Skeleton className="h-3.5 w-14" />
+              <Skeleton className="h-3.5" style={{ width: `${w * 4}px` }} />
+            </Fragment>
+          ))}
+        </div>
+      </section>
+    );
+  }
   const taxId = contact.company?.cnpj ?? contact.crm_tax_id;
   const received = contact.crm_last_received_at ? Date.parse(contact.crm_last_received_at) : 0;
   const sent = contact.crm_last_sent_at ? Date.parse(contact.crm_last_sent_at) : 0;
@@ -52,8 +72,8 @@ export function CrmSection({ ticket }: { ticket: ThreadTicket }) {
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">CRM DataCrazy</h3>
         <Tip label={`Consultado ${formatRelative(contact.crm_checked_at)}. Clique para consultar agora.`}>
-          <Button variant="ghost" size="icon-sm" onClick={() => refresh(true)} disabled={refreshing} aria-label="Consultar o CRM">
-            {refreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          <Button variant="ghost" size="icon-sm" onClick={refresh} disabled={refreshing || isFetching} aria-label="Consultar o CRM">
+            {refreshing || isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />}
           </Button>
         </Tip>
       </div>

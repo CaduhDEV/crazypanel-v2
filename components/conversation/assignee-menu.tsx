@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { ArrowRightLeft, ChevronDown, Hand, Loader2, UserMinus } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { assignTicket } from "@/lib/tickets/actions";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
@@ -15,17 +16,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useApp } from "@/components/app/app-context";
+import { patchOpenTicket } from "@/components/app/use-open-tickets";
+import { ticketKey, type ThreadTicket } from "@/components/conversation/use-thread";
 
 /** Responsável pelo atendimento: assumir, transferir ou devolver para a fila. */
 export function AssigneeMenu({ ticketId, assigneeId, disabled }: { ticketId: string; assigneeId: string | null; disabled: boolean }) {
   const { profile, members, memberById } = useApp();
+  const queryClient = useQueryClient();
   const [pending, start] = useTransition();
   const assignee = assigneeId ? memberById.get(assigneeId) : null;
 
   const assign = (id: string | null, message: string) =>
     start(async () => {
       const res = await assignTicket({ ticketId, assigneeId: id });
-      if (!res.ok) return void toast.error(res.error);
+      if (!res.ok) {
+        queryClient.invalidateQueries({ queryKey: ticketKey(ticketId) });
+        return void toast.error(res.error);
+      }
+      // Reflete na conversa e na fila na hora; o Realtime confirma para os outros.
+      patchOpenTicket(queryClient, ticketId, { assignee_id: id });
+      queryClient.setQueryData<ThreadTicket | null>(ticketKey(ticketId), (t) => t && { ...t, assignee_id: id });
       toast.success(message);
     });
 

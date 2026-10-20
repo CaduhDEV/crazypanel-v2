@@ -3,37 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAdmin, requireMember } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
 import { ActionError, runAction, type ActionResult } from "@/lib/action";
 import { crmConfigured } from "@/lib/crm";
 import { syncContactFromCrm, type CrmContact } from "@/lib/crm-sync";
 
-const CACHE_MS = 10 * 60 * 1000;
-
-const schema = z.object({ contactId: z.uuid(), force: z.boolean().default(false) });
-
-/**
- * Atualiza os dados do lead no CRM (pelo telefone), com cache de 10 min.
- * Devolve false quando nada mudou (cache válido ou CRM não configurado).
- */
-export async function refreshContactCrm(input: z.input<typeof schema>): Promise<ActionResult<boolean>> {
-  return runAction(schema, input, async ({ contactId, force }) => {
-    await requireMember();
-    if (!crmConfigured()) return false;
-    const db = createAdminClient();
-
-    const { data: c } = await db
-      .from("contacts")
-      .select("id, phone, email, company_id, crm_checked_at")
-      .eq("id", contactId)
-      .maybeSingle<CrmContact & { phone: string | null; crm_checked_at: string | null }>();
-    if (!c?.phone) return false;
-    if (!force && c.crm_checked_at && Date.now() - Date.parse(c.crm_checked_at) < CACHE_MS) return false;
-
-    await syncContactFromCrm(db, c as CrmContact);
-    return true;
-  });
-}
+// A consulta de um lead só (ao abrir a conversa ou o perfil) é a rota
+// POST /api/contacts/[id]/crm: como Server Action, ela travaria as outras ações.
 
 // =============================================================================
 // Varredura em lote (tela de Leads)

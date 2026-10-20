@@ -3,13 +3,16 @@
 import { createContext, useContext, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { FileText, Loader2, Mic, Paperclip, SendHorizontal, Smile, Square, StickyNote, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { createMediaUpload, sendMediaMessage, sendTextMessage } from "@/lib/tickets/actions";
 import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import { VOICE_NOTE_PREFIX, type Message } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Kbd, Tip } from "@/components/ui/misc";
+import { Tip } from "@/components/ui/misc";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EmojiGrid } from "@/components/conversation/emoji-grid";
+import { useApp } from "@/components/app/app-context";
+import { removeThreadMessage, threadKey, upsertThreadMessage, type ThreadData } from "@/components/conversation/use-thread";
 import { messageSnippet } from "@/components/conversation/message-utils";
 
 export interface ComposerHandle {
@@ -35,6 +38,8 @@ export function Composer({
   replyAuthor: string | null;
   onCancelReply: () => void;
 }) {
+  const { profile } = useApp();
+  const queryClient = useQueryClient();
   const [text, setText] = useState("");
   const [note, setNote] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -98,23 +103,75 @@ export function Composer({
     if (res.data.status === "failed") throw new Error(res.data.error ?? "Falha no envio.");
   };
 
+  /**
+   * Texto e nota aparecem na conversa na hora (com o relógio de "enviando") e o
+   * campo já fica livre para a próxima: o servidor grava com o mesmo id e envia
+   * na ordem em que foram escritas.
+   */
+  const sendText = async (body: string) => {
+    const snapshot = { text, replyTo, note };
+    setText("");
+    onCancelReply();
+    textareaRef.current?.focus();
+
+    const clientId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : undefined;
+    if (clientId) {
+      const now = new Date().toISOString();
+      upsertThreadMessage(queryClient, ticketId, {
+        id: clientId,
+        wa_id: null,
+        group_jid: "",
+        ticket_id: ticketId,
+        contact_id: null,
+        author_id: profile.id,
+        from_me: !snapshot.note,
+        is_note: snapshot.note,
+        sender_name: profile.name,
+        kind: "text",
+        body,
+        media_path: null,
+        media_mime: null,
+        media_name: null,
+        media_size: null,
+        media_duration: null,
+        media_status: null,
+        quoted_wa_id: snapshot.replyTo?.wa_id ?? null,
+        status: snapshot.note ? null : "pending",
+        error: null,
+        edited_at: null,
+        deleted_at: null,
+        sent_at: now,
+        created_at: now,
+      });
+    }
+
+    const res = await sendTextMessage({ ticketId, text: body, replyToId: snapshot.replyTo?.id, note: snapshot.note, clientId });
+    if (!res.ok) {
+      if (clientId) removeThreadMessage(queryClient, ticketId, clientId);
+      toast.error(res.error);
+      // Devolve o texto se o atendente ainda não começou outro.
+      setText((t) => t || snapshot.text);
+      return;
+    }
+    // O Realtime pode ter trazido um status mais novo (entregue, lida): não volta atrás.
+    const cached = queryClient.getQueryData<ThreadData>(threadKey(ticketId))?.messages.find((m) => m.id === res.data.id);
+    if (!cached || cached.status === "pending" || cached.status === null) upsertThreadMessage(queryClient, ticketId, res.data);
+    if (res.data.status === "failed") toast.error(res.data.error ?? "Falha no envio. Use “Reenviar” na mensagem.");
+  };
+
   const submit = async () => {
     const body = text.trim();
-    if (sending || disabled || (!body && !file)) return;
+    if (disabled || (!body && !file)) return;
+    if (!file) return void sendText(body);
+    if (sending) return;
+
     setSending(true);
-    const snapshot = { text, file, replyTo };
+    const snapshot = { text, file };
     setText("");
     setAttachment(null);
     onCancelReply();
-
     try {
-      if (snapshot.file) {
-        await uploadAndSend(snapshot.file, body || undefined);
-      } else {
-        const res = await sendTextMessage({ ticketId, text: body, replyToId: snapshot.replyTo?.id, note });
-        if (!res.ok) throw new Error(res.error);
-        if (res.data.status === "failed") toast.error(res.data.error ?? "Falha no envio. Use “Reenviar” na mensagem.");
-      }
+      await uploadAndSend(snapshot.file, body || undefined);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha no envio.");
       setText(snapshot.text);
@@ -265,8 +322,8 @@ export function Composer({
             <VoiceRecorder.Trigger />
           ) : (
             <Tip label="Enviar (Enter)">
-              <Button size="icon-sm" onClick={submit} disabled={sending} aria-label="Enviar">
-                {sending ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
+              <Button size="icon-sm" onClick={submit} disabled={sending && !!file} aria-label="Enviar">
+                {sending && file ? <Loader2 className="animate-spin" /> : <SendHorizontal />}
               </Button>
             </Tip>
           )}

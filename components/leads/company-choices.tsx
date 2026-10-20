@@ -4,7 +4,9 @@ import { useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Loader2, Star } from "lucide-react";
 import { toast } from "sonner";
-import { listCompanyChoices, setPrimaryCompany, type CompanyChoice } from "@/lib/leads/actions";
+import { setPrimaryCompany } from "@/lib/leads/actions";
+import { callApi } from "@/lib/api-client";
+import type { CompanyChoice } from "@/lib/leads/company-choices";
 import { cn, formatRelative, formatTaxId } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +34,7 @@ export function CompanyChoices({
   const { data, isLoading } = useQuery({
     queryKey: companyChoicesKey(contactId),
     queryFn: async () => {
-      const res = await listCompanyChoices({ contactId });
+      const res = await callApi<CompanyChoice[]>(`/api/contacts/${contactId}/companies`);
       if (!res.ok) throw new Error(res.error);
       return res.data;
     },

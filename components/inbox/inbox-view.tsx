@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ChevronRight, Eraser, Inbox, Loader2, MoreHorizontal, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,10 +22,11 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/app/page-header";
 import { useApp } from "@/components/app/app-context";
-import { useOpenTickets } from "@/components/app/use-open-tickets";
+import { patchOpenTicket, useOpenTickets } from "@/components/app/use-open-tickets";
 import { useNow } from "@/components/app/use-now";
 import { TicketCard } from "@/components/inbox/ticket-card";
 import { Workspace } from "@/components/conversation/workspace";
+import { setTicketParam } from "@/components/conversation/ticket-url";
 
 type Tab = "unassigned" | "mine" | "assigned" | "breach" | "all";
 
@@ -34,8 +35,7 @@ const ALL_GROUPS = "__all__";
 export function InboxView() {
   const { profile, settings, isAdmin } = useApp();
   const { data: tickets, isLoading, isError, refetch } = useOpenTickets();
-  const router = useRouter();
-  const pathname = usePathname();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const openTicketId = searchParams.get("ticket");
   const now = useNow();
@@ -46,11 +46,7 @@ export function InboxView() {
   const [claiming, startClaim] = useTransition();
   const [clearOpen, setClearOpen] = useState(false);
 
-  const openTicket = (id: string) => {
-    const params = new URLSearchParams(searchParams);
-    params.set("ticket", id);
-    router.push(`${pathname}?${params}`, { scroll: false });
-  };
+  const openTicket = (id: string) => setTicketParam(id, "push");
 
   const groups = useMemo(() => {
     const map = new Map<string, string>();
@@ -98,6 +94,7 @@ export function InboxView() {
       const res = await claimNextTicket();
       if (!res.ok) return void toast.error(res.error);
       if (!res.data) return void toast.message("Nenhum atendimento em aberto.");
+      patchOpenTicket(queryClient, res.data, { assignee_id: profile.id });
       openTicket(res.data);
     });
 

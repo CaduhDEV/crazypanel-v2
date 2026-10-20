@@ -56,6 +56,7 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
   });
 
   if (!contact) return null;
+  if (isLoading) return <LeadPanelSkeleton />;
   const name = contactLabel(contact);
   const unlinked = contact.kind === "customer" && !contact.company_id;
 
@@ -140,27 +141,21 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
       </Section>
 
       <Section title="Grupos">
-        {isLoading ? (
-          <Skeleton className="h-10" />
-        ) : (
-          <ul className="flex flex-col gap-1 text-sm">
-            {(data?.groups ?? []).map((g) => (
-              <li key={g.group_jid} className={cn("flex items-center justify-between gap-2", g.left_at && "text-muted-foreground line-through")}>
-                <span className="truncate">{g.group?.name ?? g.group_jid}</span>
-                {g.is_admin && <Badge variant="outline">admin</Badge>}
-              </li>
-            ))}
-          </ul>
-        )}
+        <ul className="flex flex-col gap-1 text-sm">
+          {(data?.groups ?? []).map((g) => (
+            <li key={g.group_jid} className={cn("flex items-center justify-between gap-2", g.left_at && "text-muted-foreground line-through")}>
+              <span className="truncate">{g.group?.name ?? g.group_jid}</span>
+              {g.is_admin && <Badge variant="outline">admin</Badge>}
+            </li>
+          ))}
+        </ul>
       </Section>
 
       <Section title="Histórico">
         <p className="text-xs text-muted-foreground">
           {pluralize(contact.message_count, "mensagem", "mensagens")} · na comunidade {formatRelative(contact.first_seen_at)}
         </p>
-        {isLoading ? (
-          <Skeleton className="h-16" />
-        ) : data?.history.length ? (
+        {data?.history.length ? (
           <ul className="flex flex-col gap-2">
             {data.history.map((t) => (
               <li key={t.id} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs">
@@ -196,6 +191,32 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
           queryClient.invalidateQueries({ queryKey: ["tickets"] });
         }}
       />
+    </aside>
+  );
+}
+
+/** Enquanto os dados do lead carregam (o painel só busca quando é aberto). */
+function LeadPanelSkeleton() {
+  return (
+    <aside className="flex w-72 shrink-0 flex-col gap-5 border-l border-border p-4" aria-busy="true" aria-label="Carregando dados do lead">
+      <div className="flex flex-col items-center gap-2">
+        <Skeleton className="size-11 rounded-full" />
+        <Skeleton className="h-4 w-36" />
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </div>
+      {[3, 2, 2].map((rows, i) => (
+        <div key={i} className="flex flex-col gap-2">
+          <Skeleton className="h-2.5 w-20" />
+          {Array.from({ length: rows }).map((_, j) => (
+            <Skeleton key={j} className="h-3.5" style={{ width: `${90 - j * 18}%` }} />
+          ))}
+        </div>
+      ))}
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-2.5 w-24" />
+        <Skeleton className="h-16 rounded-md" />
+      </div>
     </aside>
   );
 }

@@ -135,18 +135,20 @@ const sendTextSchema = z.object({
   text: z.string().trim().min(1, { error: "Escreva uma mensagem." }).max(4096, { error: "Mensagem longa demais." }),
   replyToId: id.optional(),
   note: z.boolean().optional(),
+  /** Id gerado no navegador: a mensagem já aparece na conversa antes do envio terminar. */
+  clientId: id.optional(),
 });
 
 export async function sendTextMessage(input: z.input<typeof sendTextSchema>): Promise<ActionResult<Message>> {
-  return runAction(sendTextSchema, input, async ({ ticketId, text, replyToId, note }) => {
-    const profile = await requireMember();
-    const ticket = await loadTicket(ticketId);
+  return runAction(sendTextSchema, input, async ({ ticketId, text, replyToId, note, clientId }) => {
+    const [profile, ticket] = await Promise.all([requireMember(), loadTicket(ticketId)]);
     const db = createAdminClient();
 
     if (note) {
       const { data, error } = await db
         .from("messages")
         .insert({
+          ...(clientId && { id: clientId }),
           group_jid: ticket.group_jid,
           ticket_id: ticket.id,
           author_id: profile.id,
@@ -167,6 +169,7 @@ export async function sendTextMessage(input: z.input<typeof sendTextSchema>): Pr
     const { data: pending, error } = await db
       .from("messages")
       .insert({
+        ...(clientId && { id: clientId }),
         group_jid: ticket.group_jid,
         ticket_id: ticket.id,
         author_id: profile.id,
@@ -221,8 +224,7 @@ const sendMediaSchema = z.object({
 
 export async function sendMediaMessage(input: z.input<typeof sendMediaSchema>): Promise<ActionResult<Message>> {
   return runAction(sendMediaSchema, input, async ({ ticketId, path, fileName, mime, size, caption, replyToId, durationSeconds }) => {
-    const profile = await requireMember();
-    const ticket = await loadTicket(ticketId);
+    const [profile, ticket] = await Promise.all([requireMember(), loadTicket(ticketId)]);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
     // O arquivo precisa ter chegado ao R2, com o tamanho declarado, antes de virar mensagem.
     const uploaded = await r2Head(r2Key(path));
@@ -356,8 +358,7 @@ const assignSchema = z.object({ ticketId: id, assigneeId: id.nullable() });
 
 export async function assignTicket(input: z.input<typeof assignSchema>): Promise<ActionResult<void>> {
   return runAction(assignSchema, input, async ({ ticketId, assigneeId }) => {
-    const profile = await requireMember();
-    const ticket = await loadTicket(ticketId);
+    const [profile, ticket] = await Promise.all([requireMember(), loadTicket(ticketId)]);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
     if (ticket.assignee_id === assigneeId) return;
 
@@ -367,7 +368,12 @@ export async function assignTicket(input: z.input<typeof assignSchema>): Promise
       if (!target?.active) throw new ActionError("Esse atendente não está ativo.");
     }
 
-    await db.from("tickets").update({ assignee_id: assigneeId }).eq("id", ticketId);
+    // Só troca se o responsável ainda for o que foi lido: dois atendentes clicando
+    // em "Assumir" juntos não ficam os dois achando que são donos.
+    const update = db.from("tickets").update({ assignee_id: assigneeId }).eq("id", ticketId).eq("status", "open");
+    const { data: changed, error } = await (ticket.assignee_id ? update.eq("assignee_id", ticket.assignee_id) : update.is("assignee_id", null)).select("id");
+    if (error) throw error;
+    if (!changed?.length) throw new ActionError("O responsável deste atendimento acabou de mudar. Confira e tente de novo.");
     await db.from("ticket_events").insert({
       ticket_id: ticketId,
       type: assigneeId ? "assigned" : "unassigned",
@@ -412,12 +418,13 @@ const closeSchema = z
 
 export async function closeTicket(input: z.input<typeof closeSchema>): Promise<ActionResult<void>> {
   return runAction(closeSchema, input, async ({ ticketId, reason, category, topic, resolvedBy, resolutionMessageId, note }) => {
-    const profile = await requireMember();
-    const ticket = await loadTicket(ticketId);
+    const [profile, ticket] = await Promise.all([requireMember(), loadTicket(ticketId)]);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
 
     const db = createAdminClient();
-    await db
+    // Só fecha se ainda estiver aberto: dois atendentes finalizando juntos não
+    // gravam dois encerramentos (o segundo recebe o aviso).
+    const { data: closed, error } = await db
       .from("tickets")
       .update({
         status: "closed",
@@ -432,7 +439,11 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
         waiting_since: null,
         assignee_id: ticket.assignee_id ?? profile.id,
       })
-      .eq("id", ticketId);
+      .eq("id", ticketId)
+      .eq("status", "open")
+      .select("id");
+    if (error) throw error;
+    if (!closed?.length) throw new ActionError("Este atendimento já foi finalizado por outra pessoa.");
     await db.from("ticket_events").insert({
       ticket_id: ticketId,
       type: "closed",
@@ -527,8 +538,7 @@ const removeParticipantSchema = z.object({ ticketId: id, contactId: id, openTick
  */
 export async function removeTicketParticipant(input: z.input<typeof removeParticipantSchema>): Promise<ActionResult<string | null>> {
   return runAction(removeParticipantSchema, input, async ({ ticketId, contactId, openTicket }) => {
-    const profile = await requireMember();
-    const ticket = await loadTicket(ticketId);
+    const [profile, ticket] = await Promise.all([requireMember(), loadTicket(ticketId)]);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
 
     const { data, error } = await createAdminClient().rpc("remove_ticket_participant", {

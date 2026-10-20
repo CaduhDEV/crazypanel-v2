@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { findCrmLeadByPhone } from "@/lib/crm";
+import { crmConfigured, findCrmLeadByPhone } from "@/lib/crm";
 
 // Somente servidor. Grava no contato o que o CRM sabe dele (pelo telefone).
 
@@ -46,4 +46,25 @@ export async function syncContactFromCrm(db: Admin, c: CrmContact): Promise<"fou
     await db.from("companies").update({ cnpj: lead.taxId }).eq("id", c.company_id).is("cnpj", null);
   }
   return lead ? "found" : "not_found";
+}
+
+const CACHE_MS = 10 * 60 * 1000;
+
+/**
+ * Atualiza os dados do lead no CRM (pelo telefone), com cache de 10 min.
+ * Devolve false quando nada mudou (cache válido, sem telefone ou CRM não configurado).
+ */
+export async function refreshContactCrm(contactId: string, force: boolean): Promise<boolean> {
+  if (!crmConfigured()) return false;
+  const db = createAdminClient();
+  const { data: c } = await db
+    .from("contacts")
+    .select("id, phone, email, company_id, crm_checked_at")
+    .eq("id", contactId)
+    .maybeSingle<CrmContact & { phone: string | null; crm_checked_at: string | null }>();
+  if (!c?.phone) return false;
+  if (!force && c.crm_checked_at && Date.now() - Date.parse(c.crm_checked_at) < CACHE_MS) return false;
+
+  await syncContactFromCrm(db, c as CrmContact);
+  return true;
 }

@@ -23,11 +23,16 @@ type TimelineItem = { type: "message"; at: string; message: Message } | { type: 
 
 export function ChatPanel({
   ticketId,
+  panelOpen,
+  onPanelOpenChange,
   onClose,
   onNavigate,
   onFinished,
 }: {
   ticketId: string;
+  /** Dados do lead na lateral: só carregam quando abertos. */
+  panelOpen: boolean;
+  onPanelOpenChange: (open: boolean) => void;
   onClose: () => void;
   onNavigate: (ticketId: string) => void;
   onFinished: () => void;
@@ -53,7 +58,6 @@ export function ChatPanel({
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [finishMode, setFinishMode] = useState<"resolved" | "parallel" | null>(null);
-  const [panelOpen, setPanelOpen] = useState(true);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
@@ -167,7 +171,7 @@ export function ChatPanel({
             )}
             <AssigneeMenu ticketId={ticket.id} assigneeId={ticket.assignee_id} disabled={closed} />
             <Tip label={panelOpen ? "Ocultar dados do lead" : "Mostrar dados do lead"}>
-              <Button variant="ghost" size="icon-sm" onClick={() => setPanelOpen((o) => !o)} className="hidden xl:inline-flex" aria-label="Dados do lead">
+              <Button variant="ghost" size="icon-sm" onClick={() => onPanelOpenChange(!panelOpen)} className="hidden xl:inline-flex" aria-label="Dados do lead">
                 {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}
               </Button>
             </Tip>
@@ -267,12 +271,12 @@ export function ChatPanel({
       </section>
 
       {panelOpen && (
-        <div className="hidden xl:flex">
+        <div className="hidden duration-200 animate-in fade-in slide-in-from-right-4 xl:flex">
           <LeadPanel ticket={ticket} onNavigate={onNavigate} />
         </div>
       )}
 
-      <FinishDialog ticketId={ticket.id} ownerId={ticket.contact_id} mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
+      <FinishDialog ticketId={ticket.id} ticketNumber={ticket.number} ownerId={ticket.contact_id} mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
     </div>
   );
 }

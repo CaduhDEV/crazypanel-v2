@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { closeTicket } from "@/lib/tickets/actions";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +20,9 @@ import { Label, Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/misc";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { messageSnippet } from "@/components/conversation/message-utils";
+import { dropOpenTicket } from "@/components/app/use-open-tickets";
+import { setTicketParam } from "@/components/conversation/ticket-url";
+import { ticketKey, type ThreadTicket } from "@/components/conversation/use-thread";
 
 interface Reply {
   id: string;
@@ -60,12 +62,14 @@ function useReplies(ticketId: string, ownerId: string, enabled: boolean) {
 
 export function FinishDialog({
   ticketId,
+  ticketNumber,
   ownerId,
   mode,
   onClose,
   onFinished,
 }: {
   ticketId: string;
+  ticketNumber: number;
   /** Autor da dúvida: as respostas são as mensagens dos outros. */
   ownerId: string;
   mode: "resolved" | "parallel" | null;
@@ -77,16 +81,19 @@ export function FinishDialog({
   const [resolvedBy, setResolvedBy] = useState<ResolvedBy | null>(null);
   const [resolution, setResolution] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [pending, start] = useTransition();
+  const queryClient = useQueryClient();
   const parallel = mode === "parallel";
   const resolved = mode === "resolved";
 
   // Assunto paralelo já abre como Comunidade · Off-topic (dá para trocar).
-  useEffect(() => {
-    if (!parallel) return;
-    setCategory((c) => c ?? "comunidade");
-    setTopic((t) => t ?? "offtopic");
-  }, [parallel]);
+  const [openedAs, setOpenedAs] = useState(mode);
+  if (mode !== openedAs) {
+    setOpenedAs(mode);
+    if (mode === "parallel") {
+      setCategory((c) => c ?? "comunidade");
+      setTopic((t) => t ?? "offtopic");
+    }
+  }
 
   const { data: replies, isLoading: loadingReplies } = useReplies(ticketId, ownerId, resolved);
   // Sugestão de quem resolveu, pelo que aconteceu no atendimento (o atendente pode trocar).
@@ -103,23 +110,35 @@ export function FinishDialog({
     setNote("");
   };
 
-  const submit = () =>
-    start(async () => {
-      if (!category) return;
-      const res = await closeTicket({
-        ticketId,
-        reason: parallel ? "parallel" : "resolved",
-        category,
-        topic: topic!,
-        resolvedBy: resolved ? (by ?? undefined) : undefined,
-        resolutionMessageId: resolved ? (resolution ?? undefined) : undefined,
-        note: note || undefined,
+  // Some da fila e vai para o próximo na hora; o servidor confirma em seguida.
+  // Se falhar, o atendimento volta para a fila e o aviso leva de volta a ele.
+  const submit = async () => {
+    if (!category || !topic) return;
+    const input = {
+      ticketId,
+      reason: parallel ? ("parallel" as const) : ("resolved" as const),
+      category,
+      topic,
+      resolvedBy: resolved ? (by ?? undefined) : undefined,
+      resolutionMessageId: resolved ? (resolution ?? undefined) : undefined,
+      note: note || undefined,
+    };
+    const restore = dropOpenTicket(queryClient, ticketId);
+    queryClient.setQueryData<ThreadTicket | null>(ticketKey(ticketId), (t) => t && { ...t, status: "closed", waiting_since: null });
+    reset();
+    onFinished();
+
+    const res = await closeTicket(input);
+    if (!res.ok) {
+      restore();
+      queryClient.invalidateQueries({ queryKey: ticketKey(ticketId) });
+      toast.error(`#${ticketNumber} não foi finalizado: ${res.error}`, {
+        action: { label: "Abrir", onClick: () => setTicketParam(ticketId, "push") },
       });
-      if (!res.ok) return void toast.error(res.error);
-      toast.success(parallel ? "Encerrado como assunto paralelo." : "Atendimento finalizado.");
-      reset();
-      onFinished();
-    });
+      return;
+    }
+    toast.success(parallel ? `#${ticketNumber} encerrado como assunto paralelo.` : `#${ticketNumber} finalizado.`);
+  };
 
   const ready = !!category && !!topic && (!resolved || !!by);
 
@@ -233,10 +252,9 @@ export function FinishDialog({
           <Button
             variant={parallel ? "default" : "success"}
             onClick={submit}
-            disabled={pending || !ready}
+            disabled={!ready}
             className={cn(!parallel && "border-transparent bg-success text-white hover:bg-success/90 dark:text-[#0b2a17]")}
           >
-            {pending && <Loader2 className="animate-spin" />}
             {parallel ? "Encerrar" : "Finalizar"}
           </Button>
         </DialogFooter>

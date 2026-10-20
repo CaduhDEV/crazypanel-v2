@@ -3,7 +3,6 @@
 import { useMemo, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Merge, Search } from "lucide-react";
 import { mergeTickets } from "@/lib/tickets/actions";
 import { cn, contactLabel } from "@/lib/utils";
@@ -18,26 +17,20 @@ import { useApp } from "@/components/app/app-context";
 import { useOpenTickets } from "@/components/app/use-open-tickets";
 import { SlaBadge } from "@/components/inbox/sla-badge";
 import { ChatPanel } from "@/components/conversation/chat-panel";
+import { setTicketParam } from "@/components/conversation/ticket-url";
 
 /**
  * Janela central de atendimento, aberta por ?ticket=<id> (o link pode ser
  * compartilhado). À esquerda, os atendimentos abertos: os seus primeiro.
  */
 export function Workspace({ ticketId }: { ticketId: string }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { profile } = useApp();
   const { data: tickets } = useOpenTickets();
   const [filter, setFilter] = useState("");
+  // Dados do lead: fechados ao abrir a janela; ao abrir, valem para os próximos atendimentos.
+  const [panelOpen, setPanelOpen] = useState(false);
 
-  const navigate = (id: string | null) => {
-    const params = new URLSearchParams(searchParams);
-    if (id) params.set("ticket", id);
-    else params.delete("ticket");
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
+  const navigate = (id: string | null) => setTicketParam(id);
 
   const ordered = useMemo(() => {
     const term = filter.trim().toLowerCase();
@@ -83,7 +76,15 @@ export function Workspace({ ticketId }: { ticketId: string }) {
           </div>
         </nav>
 
-        <ChatPanel key={ticketId} ticketId={ticketId} onClose={() => navigate(null)} onNavigate={navigate} onFinished={goToNext} />
+        <ChatPanel
+          key={ticketId}
+          ticketId={ticketId}
+          panelOpen={panelOpen}
+          onPanelOpenChange={setPanelOpen}
+          onClose={() => navigate(null)}
+          onNavigate={navigate}
+          onFinished={goToNext}
+        />
       </DialogContent>
     </Dialog>
   );
