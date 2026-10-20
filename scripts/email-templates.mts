@@ -8,7 +8,7 @@
 
 import { writeFileSync } from "node:fs";
 
-const LOGO = "https://zpqmealusvkljfnsqvia.supabase.co/storage/v1/object/public/avatars/brand/datacrazy-mark.png";
+const LOGO = "https://pourwqvtvnugydqsnugq.supabase.co/storage/v1/object/public/avatars/brand/datacrazy-mark.png";
 const C = {
   navy: "#13284a",
   brand: "#2f62a8",
