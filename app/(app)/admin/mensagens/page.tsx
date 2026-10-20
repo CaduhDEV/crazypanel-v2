@@ -22,7 +22,8 @@ export default async function MensagensPage({ searchParams }: { searchParams: Se
   const from = (page - 1) * PAGE_SIZE;
   const [result, groups] = await Promise.all([
     fetchMessages(supabase, filters, [from, from + PAGE_SIZE - 1], { count: true }),
-    supabase.from("wa_groups").select("jid, name").order("name"),
+    // Só os grupos escutados entram no filtro.
+    supabase.from("wa_groups").select("jid, name").eq("listening", true).order("name"),
   ]);
   const total = result.count ?? 0;
 
