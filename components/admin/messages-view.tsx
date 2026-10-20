@@ -217,7 +217,10 @@ export function MessagesView({
                 const Icon = KIND_ICON[k.value] ?? MessageSquareText;
                 return (
                   <SelectItem key={k.value} value={k.value}>
-                    <Icon className="size-3.5 text-muted-foreground" /> {k.label}
+                    <span className="flex items-center gap-2">
+                      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                      {k.label}
+                    </span>
                   </SelectItem>
                 );
               })}
