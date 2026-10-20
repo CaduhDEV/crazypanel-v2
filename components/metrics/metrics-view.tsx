@@ -69,8 +69,6 @@ export function MetricsView({ initial, periods }: { initial: MetricsPayload; per
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={error ?? undefined}>
-            {refreshing ? <Loader2 className="size-3 animate-spin" /> : <span className={cn("size-2 rounded-full", error ? "bg-destructive" : "animate-pulse bg-success")} />}
-            {error ? "sem conexão" : `ao vivo · ${since}`}
           </span>
           <div className="flex rounded-md border border-border p-0.5" role="tablist" aria-label="Período">
             {periods.map((d) => (

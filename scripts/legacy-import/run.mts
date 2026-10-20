@@ -314,8 +314,10 @@ async function main() {
   }
   const ticketByLegacy = new Map<string, string>();
   if (!DRY) {
-    log(`gravando ${ticketRows.length} atendimentos…`);
-    for (const part of chunk(ticketRows, 200)) {
+    // Só os que faltam: tentar inserir um que já existe gasta um número da sequência (#) mesmo sem gravar.
+    const missingTickets = ticketRows.filter((t) => !existing.has(t.legacy_id as string));
+    log(`gravando ${missingTickets.length} atendimentos…`);
+    for (const part of chunk(missingTickets, 200)) {
       const { error } = await db.from("tickets").upsert(part, { onConflict: "legacy_id", ignoreDuplicates: true });
       if (error) throw error;
     }
