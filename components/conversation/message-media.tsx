@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { Download, FileText, ImageOff, Loader2, MapPin, RotateCw } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { retryMediaDownload } from "@/lib/tickets/actions";
+import { threadKey, upsertThreadMessage } from "@/components/conversation/use-thread";
 import { formatBytes } from "@/lib/utils";
 import type { Message } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -99,11 +101,16 @@ function ImageMedia({ message }: { message: Message }) {
 }
 
 function FailedMedia({ message }: { message: Message }) {
+  const queryClient = useQueryClient();
   const [pending, start] = useTransition();
   const retry = () =>
     start(async () => {
       const res = await retryMediaDownload({ messageId: message.id });
-      if (!res.ok) toast.error(res.error);
+      if (!res.ok) return void toast.error(res.error);
+      // O Histórico e a página Mensagens não têm Realtime: a tela atualiza aqui.
+      const ticketId = message.ticket_id;
+      if (ticketId && !upsertThreadMessage(queryClient, ticketId, res.data)) queryClient.invalidateQueries({ queryKey: threadKey(ticketId) });
+      queryClient.invalidateQueries({ queryKey: ["message-context"] });
     });
   return (
     <div className="flex w-64 max-w-full items-center gap-3 rounded-md border border-dashed border-border p-2.5 text-xs text-muted-foreground">

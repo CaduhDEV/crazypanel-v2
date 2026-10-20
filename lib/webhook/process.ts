@@ -221,10 +221,12 @@ export async function storeIncomingMedia(
   db: Admin,
   messageId: string,
   m: Pick<NormalizedMessage, "waId" | "mime" | "fileName">,
-) {
+  opts: { attempts?: number } = {},
+): Promise<boolean> {
   // A uazapi às vezes ainda não tem o arquivo logo depois do evento (ou a rede
   // oscila): tenta de novo antes de marcar como falha. Roda depois da resposta
   // ao webhook (after), então a espera não segura a uazapi.
+  const attempts = opts.attempts ?? MEDIA_ATTEMPTS;
   for (let attempt = 1; ; attempt++) {
     try {
       const uaz = clientFromRow(await getInstanceRow());
@@ -237,15 +239,15 @@ export async function storeIncomingMedia(
         .from("messages")
         .update({ media_path: path, media_store: stored.store, media_mime: stored.mime, media_size: stored.size, media_status: "ready" })
         .eq("id", messageId);
-      return;
+      return true;
     } catch (e) {
-      if (attempt < MEDIA_ATTEMPTS) {
+      if (attempt < attempts) {
         await new Promise((r) => setTimeout(r, attempt * 3000));
         continue;
       }
       console.error(`[webhook] mídia da mensagem ${messageId} falhou (${attempt} tentativas):`, e);
       await db.from("messages").update({ media_status: "failed" }).eq("id", messageId);
-      return;
+      return false;
     }
   }
 }

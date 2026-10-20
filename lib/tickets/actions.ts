@@ -274,14 +274,17 @@ export async function retryMessage(input: z.input<typeof messageIdSchema>): Prom
 }
 
 /** Tenta baixar de novo uma mídia recebida que falhou. */
-export async function retryMediaDownload(input: z.input<typeof messageIdSchema>): Promise<ActionResult<void>> {
+/** Baixa de novo a mídia recebida. Devolve a mensagem atualizada (telas sem Realtime, como o Histórico, usam). */
+export async function retryMediaDownload(input: z.input<typeof messageIdSchema>): Promise<ActionResult<Message>> {
   return runAction(messageIdSchema, input, async ({ messageId }) => {
-    await requireMember();
-    const message = await loadMessage(messageId);
+    const [, message] = await Promise.all([requireMember(), loadMessage(messageId)]);
     if (message.from_me || !message.wa_id) throw new ActionError("Esta mídia não pode ser baixada de novo.");
     const db = createAdminClient();
     await db.from("messages").update({ media_status: "pending" }).eq("id", messageId);
-    await storeIncomingMedia(db, messageId, { waId: message.wa_id, mime: message.media_mime, fileName: message.media_name });
+    // Uma tentativa só: quem clicou está esperando a resposta.
+    const ok = await storeIncomingMedia(db, messageId, { waId: message.wa_id, mime: message.media_mime, fileName: message.media_name }, { attempts: 1 });
+    if (!ok) throw new ActionError("O WhatsApp não entregou o arquivo agora. Tente de novo em instantes.");
+    return loadMessage(messageId);
   });
 }
 
