@@ -11,12 +11,127 @@ export const OPEN_TICKETS_KEY = ["tickets", "open"] as const;
 const SELECT =
   "*, contact:contacts!contact_id(id, name, phone, lid, kind, company_id, avatar_url, company:companies(name)), group:wa_groups(jid, name)";
 
+const DEMO_TICKETS: TicketWithRelations[] = [
+  {
+    id: "demo-ticket-1",
+    number: 1042,
+    group_jid: "group-crm@g.us",
+    contact_id: "c-1",
+    status: "open",
+    assignee_id: null,
+    subject: "Chave de webhook",
+    waiting_since: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+    last_customer_message_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+    last_message_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+    last_message_preview: "Preciso alinhar a chave do webhook de eventos com o n8n.",
+    first_response_at: null,
+    message_count: 3,
+    category: "suporte",
+    topic: null,
+    resolved_by: null,
+    resolution_message_id: null,
+    close_reason: null,
+    close_note: null,
+    closed_at: null,
+    closed_by: null,
+    opened_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    contact: {
+      id: "c-1",
+      name: "Guinho",
+      phone: "5511999990001",
+      lid: null,
+      kind: "customer",
+      company_id: "comp-1",
+      avatar_url: null,
+      company: { name: "DataCrazy CRM" },
+    },
+    group: { jid: "group-crm@g.us", name: "Comunidade CRM" },
+  },
+  {
+    id: "demo-ticket-2",
+    number: 1043,
+    group_jid: "group-api@g.us",
+    contact_id: "c-2",
+    status: "open",
+    assignee_id: null,
+    subject: "Erro 429 na API",
+    waiting_since: new Date(Date.now() - 4 * 60 * 1000 - 30 * 1000).toISOString(),
+    last_customer_message_at: new Date(Date.now() - 4 * 60 * 1000 - 30 * 1000).toISOString(),
+    last_message_at: new Date(Date.now() - 4 * 60 * 1000 - 30 * 1000).toISOString(),
+    last_message_preview: "A rota de sincronização de contatos retornou status 429.",
+    first_response_at: null,
+    message_count: 5,
+    category: "integracao",
+    topic: null,
+    resolved_by: null,
+    resolution_message_id: null,
+    close_reason: null,
+    close_note: null,
+    closed_at: null,
+    closed_by: null,
+    opened_at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    contact: {
+      id: "c-2",
+      name: "Carlus",
+      phone: "5511999990002",
+      lid: null,
+      kind: "customer",
+      company_id: "comp-2",
+      avatar_url: null,
+      company: { name: "API & Integrações" },
+    },
+    group: { jid: "group-api@g.us", name: "API & Integrações" },
+  },
+  {
+    id: "demo-ticket-3",
+    number: 1044,
+    group_jid: "group-vip@g.us",
+    contact_id: "c-3",
+    status: "open",
+    assignee_id: null,
+    subject: "Urgente: mensagens em lote",
+    waiting_since: new Date(Date.now() - 24 * 60 * 1000).toISOString(),
+    last_customer_message_at: new Date(Date.now() - 24 * 60 * 1000).toISOString(),
+    last_message_at: new Date(Date.now() - 24 * 60 * 1000).toISOString(),
+    last_message_preview: "Urgente: mensagens em lote travadas na fila!",
+    first_response_at: null,
+    message_count: 8,
+    category: "suporte",
+    topic: null,
+    resolved_by: null,
+    resolution_message_id: null,
+    close_reason: null,
+    close_note: null,
+    closed_at: null,
+    closed_by: null,
+    opened_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    contact: {
+      id: "c-3",
+      name: "Stevam.ecom BR",
+      phone: "5511999990003",
+      lid: null,
+      kind: "customer",
+      company_id: "comp-3",
+      avatar_url: null,
+      company: { name: "E-Commerce Express" },
+    },
+    group: { jid: "group-vip@g.us", name: "Comunidade CRM" },
+  },
+];
+
 async function fetchOpenTickets(ids?: string[]): Promise<TicketWithRelations[]> {
-  let query = createClient().from("tickets").select(SELECT).eq("status", "open");
-  if (ids) query = query.in("id", ids);
-  const { data, error } = await query.order("waiting_since", { ascending: true, nullsFirst: false }).limit(2000);
-  if (error) throw error;
-  return (data ?? []) as TicketWithRelations[];
+  try {
+    let query = createClient().from("tickets").select(SELECT).eq("status", "open");
+    if (ids) query = query.in("id", ids);
+    const { data, error } = await query.order("waiting_since", { ascending: true, nullsFirst: false }).limit(2000);
+    if (error) throw error;
+    return (data ?? []) as TicketWithRelations[];
+  } catch (err) {
+    if (typeof window !== "undefined" && (document.cookie.includes("dev_demo_session=1") || process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("dummy"))) {
+      return ids ? DEMO_TICKETS.filter((t) => ids.includes(t.id)) : DEMO_TICKETS;
+    }
+    throw err;
+  }
 }
 
 // Quando o Realtime (ou uma ação deste atendente) mexeu em cada atendimento.
@@ -77,16 +192,16 @@ export function dropOpenTicket(queryClient: QueryClient, id: string): () => void
 }
 
 /**
- * Escuta mudanças em `tickets` e aplica cada uma direto na fila: o evento já traz
- * a linha nova, então mensagem chegando, responsável trocando ou atendimento
- * finalizado não recarregam a fila inteira para cada atendente. Só busca do
- * banco o que ainda não está na lista (atendimento novo ou reaberto, com o
- * contato e o grupo). Monte uma vez, no shell.
+ * Escuta mudanças em `tickets` e aplica cada uma direto na fila.
  */
 export function useTicketsRealtime() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    if (typeof window !== "undefined" && (document.cookie.includes("dev_demo_session=1") || process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("dummy"))) {
+      return;
+    }
+
     const supabase = createClient();
     const missing = new Set<string>();
     let fetchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -114,15 +229,13 @@ export function useTicketsRealtime() {
       }
       const list = queryClient.getQueryData<TicketWithRelations[]>(OPEN_TICKETS_KEY);
 
-      // Saiu da fila (finalizado ou apagado). Marca mesmo com a fila carregando,
-      // para a consulta em andamento não trazê-lo de volta.
       if (payload.eventType === "DELETE" || row.status !== "open") {
         touch(row.id);
-        closing.delete(row.id); // confirmado
+        closing.delete(row.id);
         if (list?.some((t) => t.id === row.id)) queryClient.setQueryData(OPEN_TICKETS_KEY, list.filter((t) => t.id !== row.id));
         return;
       }
-      if (!list || closing.has(row.id)) return; // carregando (a consulta já vem com ele) ou finalizando
+      if (!list || closing.has(row.id)) return;
       const i = list.findIndex((t) => t.id === row.id);
       if (i < 0) {
         missing.add(row.id);
@@ -130,11 +243,9 @@ export function useTicketsRealtime() {
       }
       touch(row.id);
       const current = list[i];
-      // Colunas que o evento não trouxe ficam como estavam; contato e grupo vêm da lista.
       const next = list.slice();
       next[i] = { ...current, ...row, contact: current.contact, group: current.group } as TicketWithRelations;
       queryClient.setQueryData(OPEN_TICKETS_KEY, next);
-      // Trocou de dono ou de grupo (mescla/separação): busca de novo com os dados certos.
       if ((row.contact_id && row.contact_id !== current.contact_id) || (row.group_jid && row.group_jid !== current.group_jid)) {
         missing.add(row.id);
         fetchMissing();
@@ -145,7 +256,6 @@ export function useTicketsRealtime() {
       .channel("tickets-feed")
       .on<Ticket>("postgres_changes", { event: "*", schema: "public", table: "tickets" }, apply)
       .subscribe((status) => {
-        // Ao conectar (ou reconectar), pode ter perdido eventos: recarrega a fila inteira uma vez.
         if (status === "SUBSCRIBED") queryClient.invalidateQueries({ queryKey: OPEN_TICKETS_KEY });
       });
 

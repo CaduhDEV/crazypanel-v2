@@ -48,6 +48,10 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
   }, [profile.id, profile.name, profile.avatar_url]);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && (document.cookie.includes("dev_demo_session=1") || process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("dummy"))) {
+      return;
+    }
+
     const supabase = createClient();
     const channel = supabase.channel("presence:tickets", { config: { presence: { key: profile.id } } });
     channelRef.current = channel;

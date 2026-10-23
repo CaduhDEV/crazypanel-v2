@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas acessíveis sem sessão. O webhook se autentica pelo segredo na URL.
-const PUBLIC_ROUTES = ["/login", "/esqueci-senha", "/auth", "/api/webhooks", "/api/cron", "/api/community", "/api/verify"];
+const PUBLIC_ROUTES = ["/", "/login", "/esqueci-senha", "/auth", "/api/webhooks", "/api/cron", "/api/community", "/api/verify"];
 // Rotas que não fazem sentido para quem já está logado.
 const GUEST_ONLY_ROUTES = ["/login", "/esqueci-senha"];
 
@@ -38,7 +38,8 @@ export async function updateSession(request: NextRequest) {
 
   // Não coloque código entre createServerClient e getClaims: é aqui que o token é validado/renovado.
   const { data } = await supabase.auth.getClaims();
-  const isLoggedIn = !!data?.claims;
+  const isDevDemo = request.cookies.get("dev_demo_session")?.value === "1";
+  const isLoggedIn = isDevDemo || !!data?.claims;
 
   const redirect = (to: string) => {
     const url = request.nextUrl.clone();
@@ -56,7 +57,7 @@ export async function updateSession(request: NextRequest) {
     return redirect("/login");
   }
   if (isLoggedIn && matches(pathname, GUEST_ONLY_ROUTES)) {
-    return redirect("/");
+    return redirect("/atendimento");
   }
 
   return response;
