@@ -10,7 +10,7 @@ export type QuotedLite = Pick<Message, "id" | "wa_id" | "body" | "kind" | "sende
 
 export interface ThreadTicket extends Ticket {
   contact: (Contact & { company: Pick<Company, "id" | "name" | "external_id" | "cnpj"> | null }) | null;
-  group: Pick<WaGroup, "jid" | "name"> | null;
+  group: Pick<WaGroup, "jid" | "name" | "is_announce"> | null;
 }
 
 export interface ThreadData {
@@ -26,6 +26,39 @@ export const threadKey = (id: string) => ["ticket", id, "messages"] as const;
 export const eventsKey = (id: string) => ["ticket", id, "events"] as const;
 export const participantsKey = (id: string) => ["ticket", id, "participants"] as const;
 export const suggestionsKey = (id: string) => ["ticket", id, "suggestions"] as const;
+export const groupEventsKey = (id: string) => ["ticket", id, "group-events"] as const;
+
+export const GROUP_SETTING_TYPES = ["group_closed", "group_opened", "group_info_locked", "group_info_unlocked"] as const;
+
+export interface GroupSettingEvent {
+  id: number;
+  type: (typeof GROUP_SETTING_TYPES)[number];
+  actor_name: string | null;
+  created_at: string;
+}
+
+/** Grupo trancado/destrancado durante o atendimento (aviso com cadeado na conversa). */
+export function useGroupSettingEvents(id: string, groupJid: string | undefined, from: string | undefined, to: string | null | undefined) {
+  return useQuery({
+    queryKey: groupEventsKey(id),
+    enabled: !!groupJid && !!from,
+    queryFn: async (): Promise<GroupSettingEvent[]> => {
+      let q = createClient()
+        .from("community_events")
+        .select("id, type, actor_name, created_at")
+        .eq("group_jid", groupJid!)
+        .in("type", [...GROUP_SETTING_TYPES])
+        .gte("created_at", from!)
+        .order("created_at", { ascending: true })
+        .limit(50);
+      if (to) q = q.lte("created_at", to);
+      const { data, error } = await q;
+      // Antes da migration o tipo não existe: sem avisos, sem erro na tela.
+      if (error) return [];
+      return (data ?? []) as GroupSettingEvent[];
+    },
+  });
+}
 
 export function useTicket(id: string) {
   return useQuery({
@@ -33,7 +66,7 @@ export function useTicket(id: string) {
     queryFn: async (): Promise<ThreadTicket | null> => {
       const { data, error } = await createClient()
         .from("tickets")
-        .select("*, contact:contacts!contact_id(*, company:companies(id, name, external_id, cnpj)), group:wa_groups(jid, name)")
+        .select("*, contact:contacts!contact_id(*, company:companies(id, name, external_id, cnpj)), group:wa_groups(jid, name, is_announce)")
         .eq("id", id)
         .maybeSingle();
       if (error) throw error;
@@ -186,7 +219,7 @@ export function removeThreadMessage(queryClient: QueryClient, ticketId: string, 
 }
 
 /** Realtime do atendimento aberto: mensagens, reações, histórico e o próprio ticket. */
-export function useThreadRealtime(id: string, messageIds: string[]) {
+export function useThreadRealtime(id: string, messageIds: string[], groupJid?: string) {
   const queryClient = useQueryClient();
   // Mensagens deste atendimento, para filtrar as reações. Num ref: a inscrição não
   // é refeita a cada mensagem nova (perderia eventos enquanto reconecta).
@@ -243,10 +276,21 @@ export function useThreadRealtime(id: string, messageIds: string[]) {
         // Ao reconectar, pode ter perdido eventos.
         if (status === "SUBSCRIBED") refreshThread();
       });
+    // Grupo trancado/destrancado: o aviso aparece na conversa e o cadeado no cabeçalho.
+    const group = groupJid
+      ? supabase
+          .channel(`group-settings:${id}`)
+          .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_events", filter: `group_jid=eq.${groupJid}` }, () => {
+            queryClient.invalidateQueries({ queryKey: groupEventsKey(id) });
+            queryClient.invalidateQueries({ queryKey: ticketKey(id) });
+          })
+          .subscribe()
+      : null;
 
     return () => {
       if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
+      if (group) supabase.removeChannel(group);
     };
-  }, [id, queryClient]);
+  }, [id, groupJid, queryClient]);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, CircleCheck, Coffee, Loader2, MessagesSquare, PanelRightClose, PanelRightOpen, Upload, X } from "lucide-react";
+import { ArrowDown, CircleCheck, Coffee, Loader2, Lock, LockOpen, MessagesSquare, PanelRightClose, PanelRightOpen, Upload, X } from "lucide-react";
 import { cn, contactLabel, formatDayLabel, formatPhone, formatTime } from "@/lib/utils";
 import { CLOSE_REASONS, type Message, type TicketEvent } from "@/lib/types";
 import { classificationLabel, type Taxonomy } from "@/lib/taxonomy";
@@ -18,9 +18,20 @@ import { LeadPanel } from "@/components/conversation/lead-panel";
 import { MessageItem } from "@/components/conversation/message-item";
 import { ContextSuggestions } from "@/components/conversation/context-suggestions";
 import { resolveAuthor } from "@/components/conversation/message-utils";
-import { useParticipants, useThread, useThreadRealtime, useTicket, useTicketEvents } from "@/components/conversation/use-thread";
+import {
+  useGroupSettingEvents,
+  useParticipants,
+  useThread,
+  useThreadRealtime,
+  useTicket,
+  useTicketEvents,
+  type GroupSettingEvent,
+} from "@/components/conversation/use-thread";
 
-type TimelineItem = { type: "message"; at: string; message: Message } | { type: "event"; at: string; event: TicketEvent };
+type TimelineItem =
+  | { type: "message"; at: string; message: Message }
+  | { type: "event"; at: string; event: TicketEvent }
+  | { type: "group"; at: string; group: GroupSettingEvent };
 
 export function ChatPanel({
   ticketId,
@@ -44,6 +55,7 @@ export function ChatPanel({
   const { data: thread, isLoading: threadLoading } = useThread(ticketId);
   const { data: events } = useTicketEvents(ticketId);
   const { data: participants } = useParticipants(ticketId);
+  const { data: groupEvents } = useGroupSettingEvents(ticketId, ticket?.group_jid, ticket?.opened_at, ticket?.closed_at);
   // Leads ativos (dono + participantes) e o nome de todos, inclusive retirados.
   const { activeLeadIds, leadNameById } = useMemo(() => {
     const active = new Set<string>();
@@ -55,7 +67,7 @@ export function ChatPanel({
     return { activeLeadIds: active, leadNameById: names };
   }, [participants]);
   const messageIds = useMemo(() => thread?.messages.map((m) => m.id) ?? [], [thread]);
-  useThreadRealtime(ticketId, messageIds);
+  useThreadRealtime(ticketId, messageIds, ticket?.group_jid);
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [finishMode, setFinishMode] = useState<"resolved" | "parallel" | null>(null);
@@ -76,9 +88,10 @@ export function ChatPanel({
     const items: TimelineItem[] = [
       ...(thread?.messages ?? []).map((m) => ({ type: "message" as const, at: m.sent_at, message: m })),
       ...(events ?? []).map((e) => ({ type: "event" as const, at: e.created_at, event: e })),
+      ...(groupEvents ?? []).map((g) => ({ type: "group" as const, at: g.created_at, group: g })),
     ];
-    return items.sort((a, b) => a.at.localeCompare(b.at));
-  }, [thread, events]);
+    return items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  }, [thread, events, groupEvents]);
 
   // Abre no fim da conversa; depois só acompanha mensagens novas se o atendente já estava no fim.
   useLayoutEffect(() => {
@@ -149,6 +162,13 @@ export function ChatPanel({
                 <MessagesSquare className="size-3" />
                 <span className="max-w-48 truncate">{ticket.group?.name ?? "Grupo"}</span>
               </span>
+              {ticket.group?.is_announce && (
+                <Tip label="Grupo fechado: só os admins enviam mensagens">
+                  <span className="flex items-center gap-1 rounded-md border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-warning">
+                    <Lock className="size-3" /> Fechado
+                  </span>
+                </Tip>
+              )}
             </div>
             <span className="text-xs text-muted-foreground">
               #{ticket.number}
@@ -194,7 +214,7 @@ export function ChatPanel({
             const prev = timeline[i - 1];
             const newDay = !prev || new Date(prev.at).toDateString() !== new Date(item.at).toDateString();
             return (
-              <Fragment key={item.type === "message" ? item.message.id : `e${item.event.id}`}>
+              <Fragment key={item.type === "message" ? item.message.id : item.type === "event" ? `e${item.event.id}` : `g${item.group.id}`}>
                 {newDay && (
                   <div className="sticky top-0 z-10 flex justify-center py-1">
                     <span className="rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground shadow-sm">
@@ -216,8 +236,10 @@ export function ChatPanel({
                     onJumpTo={jumpTo}
                     onSplit={onNavigate}
                   />
-                ) : (
+                ) : item.type === "event" ? (
                   <EventLine event={item.event} memberById={memberById} leadNameById={leadNameById} taxonomy={taxonomy} />
+                ) : (
+                  <GroupSettingLine event={item.group} />
                 )}
               </Fragment>
             );
@@ -351,6 +373,34 @@ function EventLine({
         {text} · {formatTime(event.created_at)}
       </span>
       <span className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+const GROUP_SETTING_TEXT: Record<GroupSettingEvent["type"], (who: string) => string> = {
+  group_closed: (who) => `${who} proibiu os membros de enviar mensagens no grupo`,
+  group_opened: (who) => `${who} permitiu que os membros enviem mensagens no grupo`,
+  group_info_locked: (who) => `${who} deixou só os admins editarem os dados do grupo`,
+  group_info_unlocked: (who) => `${who} permitiu que os membros editem os dados do grupo`,
+};
+
+/** Aviso de grupo trancado/destrancado, com cadeado (como uma notificação do WhatsApp). */
+function GroupSettingLine({ event }: { event: GroupSettingEvent }) {
+  const locks = event.type === "group_closed" || event.type === "group_info_locked";
+  const Icon = locks ? Lock : LockOpen;
+  return (
+    <div className="flex justify-center px-6 py-0.5">
+      <span
+        className={cn(
+          "flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1 text-[11.5px] shadow-sm",
+          locks ? "border-warning/30 bg-warning-soft text-warning" : "border-success/30 bg-success-soft text-success",
+        )}
+      >
+        <Icon className="size-3.5 shrink-0" />
+        <span className="truncate">
+          {GROUP_SETTING_TEXT[event.type](event.actor_name ?? "Um admin")} · {formatTime(event.created_at)}
+        </span>
+      </span>
     </div>
   );
 }

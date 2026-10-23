@@ -339,6 +339,7 @@ async function handleGroups(db: Admin, payload: Payload) {
     typeof event.Sender === "string" ? event.Sender : null,
   );
   const actorName = typeof event.Notify === "string" && event.Notify ? event.Notify : null;
+  await logGroupSettings(db, jid, event, actor, actorName);
   const joinLids = asList(event.JoinLid);
 
   for (const [i, entry] of asList(event.Join).entries()) {
@@ -362,6 +363,40 @@ async function handleGroups(db: Admin, payload: Payload) {
       await db.from("group_members").update({ left_at: new Date().toISOString() }).eq("group_jid", jid).eq("contact_id", c.id);
     }
     await logMembership(db, "leave", jid, { phone, lid, contactId: (contacts?.[0]?.id as string | undefined) ?? null }, actor, actorName);
+  }
+}
+
+/**
+ * Grupo trancado/destrancado: Announce (só admins enviam mensagens) e Locked (só
+ * admins editam os dados). Vira um aviso com cadeado nos atendimentos do grupo.
+ */
+async function logGroupSettings(
+  db: Admin,
+  groupJid: string,
+  event: Record<string, unknown>,
+  actor: { phone: string | null; lid: string | null },
+  actorName: string | null,
+) {
+  const changes: { type: string; column: "is_announce" | "locked"; value: boolean }[] = [];
+  const announce = event.Announce as { IsAnnounce?: unknown } | null | undefined;
+  if (announce && typeof announce.IsAnnounce === "boolean") {
+    changes.push({ type: announce.IsAnnounce ? "group_closed" : "group_opened", column: "is_announce", value: announce.IsAnnounce });
+  }
+  const locked = event.Locked as { IsLocked?: unknown } | null | undefined;
+  if (locked && typeof locked.IsLocked === "boolean") {
+    changes.push({ type: locked.IsLocked ? "group_info_locked" : "group_info_unlocked", column: "locked", value: locked.IsLocked });
+  }
+  const at = typeof event.Timestamp === "string" && !Number.isNaN(Date.parse(event.Timestamp)) ? event.Timestamp : new Date().toISOString();
+  for (const c of changes) {
+    try {
+      await db.from("wa_groups").update({ [c.column]: c.value }).eq("jid", groupJid);
+      const { error } = await db
+        .from("community_events")
+        .insert({ type: c.type, group_jid: groupJid, actor_phone: actor.phone, actor_name: actorName, data: { lid: actor.lid }, created_at: at });
+      if (error) console.error("[webhook] configuração do grupo:", error.message);
+    } catch (e) {
+      console.error("[webhook] configuração do grupo:", e);
+    }
   }
 }
 
