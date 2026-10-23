@@ -39,3 +39,7 @@ supabase/.temp
 
 # temporários locais
 /.tmp/
+
+# Instruções locais de agentes (Claude Code / next dev); não vão para o GitHub
+/AGENTS.md
+/CLAUDE.md
