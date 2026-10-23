@@ -61,7 +61,8 @@ function done() {
 const createCategorySchema = z.object({ label, firstTopic: label });
 
 /** Categoria nova já com a primeira subcategoria (ao finalizar, a subcategoria é obrigatória). */
-export async function createCategory(input: z.input<typeof createCategorySchema>): Promise<ActionResult<void>> {
+/** Devolve as chaves criadas (o diálogo de finalizar já seleciona as duas). */
+export async function createCategory(input: z.input<typeof createCategorySchema>): Promise<ActionResult<{ category: string; topic: string }>> {
   return runAction(createCategorySchema, input, async ({ label: name, firstTopic }) => {
     await requireAdmin();
     const db = createAdminClient();
@@ -74,7 +75,8 @@ export async function createCategory(input: z.input<typeof createCategorySchema>
       if (error) throw error;
       const res = await createTopic({ category: again.key, label: firstTopic });
       if (!res.ok) throw new ActionError(res.error);
-      return done();
+      done();
+      return { category: again.key as string, topic: res.data };
     }
     const catKey = await freeKey(db, name);
     const { error } = await db.from("ticket_categories").insert({ key: catKey, label: name, position: await nextPosition(db, "ticket_categories") });
@@ -86,6 +88,7 @@ export async function createCategory(input: z.input<typeof createCategorySchema>
       throw te;
     }
     done();
+    return { category: catKey, topic: topicKey };
   });
 }
 
@@ -144,7 +147,8 @@ export async function deleteCategory(input: z.input<typeof keySchema>): Promise<
 
 const createTopicSchema = z.object({ category: key, label });
 
-export async function createTopic(input: z.input<typeof createTopicSchema>): Promise<ActionResult<void>> {
+/** Devolve a chave da subcategoria (nova ou a arquivada que voltou). */
+export async function createTopic(input: z.input<typeof createTopicSchema>): Promise<ActionResult<string>> {
   return runAction(createTopicSchema, input, async ({ category, label: name }) => {
     await requireAdmin();
     const db = createAdminClient();
@@ -157,16 +161,19 @@ export async function createTopic(input: z.input<typeof createTopicSchema>): Pro
     if (again) {
       const { error } = await db.from("ticket_topics").update({ archived_at: null, label: name }).eq("key", again.key);
       if (error) throw error;
-      return done();
+      done();
+      return again.key as string;
     }
+    const topicKey = await freeKey(db, name);
     const { error } = await db.from("ticket_topics").insert({
-      key: await freeKey(db, name),
+      key: topicKey,
       category_key: category,
       label: name,
       position: await nextPosition(db, "ticket_topics", category),
     });
     if (error) throw error;
     done();
+    return topicKey;
   });
 }
 

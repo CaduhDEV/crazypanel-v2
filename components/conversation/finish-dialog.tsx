@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { closeTicket } from "@/lib/tickets/actions";
+import { createCategory, createTopic } from "@/lib/admin/taxonomy";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatRelative } from "@/lib/utils";
 import { RESOLVED_BY, type Message, type ResolvedBy, type TicketCategory, type TicketTopic } from "@/lib/types";
 import { activeCategories, isActivePair, topicsOf } from "@/lib/taxonomy";
 import { useApp } from "@/components/app/app-context";
 import { Button } from "@/components/ui/button";
-import { Label, Textarea } from "@/components/ui/input";
+import { Input, Label, Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/misc";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { messageSnippet } from "@/components/conversation/message-utils";
@@ -76,7 +78,7 @@ export function FinishDialog({
   const [resolution, setResolution] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const queryClient = useQueryClient();
-  const { taxonomy } = useApp();
+  const { taxonomy, isAdmin } = useApp();
   const parallel = mode === "parallel";
   const resolved = mode === "resolved";
 
@@ -139,7 +141,13 @@ export function FinishDialog({
 
   return (
     <Dialog open={mode !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto">
+      <DialogContent
+        className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto"
+        // Esc no campo de "+ Nova" só fecha o campo, não o diálogo (e não perde o que já foi escolhido).
+        onEscapeKeyDown={(e) => {
+          if ((e.target as HTMLElement | null)?.closest?.("[data-add-choice]")) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{parallel ? "Encerrar como assunto paralelo" : "Finalizar atendimento"}</DialogTitle>
           <DialogDescription>
@@ -158,9 +166,29 @@ export function FinishDialog({
             setCategory(v);
             if (!topicsOf(taxonomy, v).some((t) => t.key === topic)) setTopic(null);
           }}
+          extra={
+            isAdmin && (
+              <AddChoice
+                kind="category"
+                onCreated={(k) => {
+                  setCategory(k.category!);
+                  setTopic(k.topic);
+                }}
+              />
+            )
+          }
         />
 
-        {category && <Choices legend="Subcategoria" options={topicsOf(taxonomy, category).map((t) => ({ value: t.key, label: t.label }))} value={topic} onChange={setTopic} columns={4} />}
+        {category && (
+          <Choices
+            legend="Subcategoria"
+            options={topicsOf(taxonomy, category).map((t) => ({ value: t.key, label: t.label }))}
+            value={topic}
+            onChange={setTopic}
+            columns={4}
+            extra={isAdmin && <AddChoice key={category} kind="topic" category={category} onCreated={(k) => setTopic(k.topic)} />}
+          />
+        )}
 
         {resolved && (
           <fieldset className="flex flex-col gap-2.5">
@@ -265,6 +293,7 @@ function Choices<T extends string>({
   value,
   onChange,
   columns = 3,
+  extra,
 }: {
   legend: string;
   hint?: string;
@@ -272,6 +301,8 @@ function Choices<T extends string>({
   value: T | null;
   onChange: (v: T) => void;
   columns?: 3 | 4;
+  /** Fim da grade (ex.: "+ Nova" para o admin criar a opção que falta). */
+  extra?: React.ReactNode;
 }) {
   return (
     <fieldset className="flex flex-col gap-2.5">
@@ -293,7 +324,98 @@ function Choices<T extends string>({
             {c.label}
           </button>
         ))}
+        {extra}
       </div>
     </fieldset>
+  );
+}
+
+/**
+ * "+ Nova" no fim da grade: vira um campo para criar a categoria (já com a
+ * primeira subcategoria) ou a subcategoria que falta. Vale para todos na hora
+ * e já fica selecionada.
+ */
+function AddChoice({ kind, category, onCreated }: { kind: "category" | "topic"; category?: string; onCreated: (keys: { category?: string; topic: string }) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [first, setFirst] = useState("");
+  const [pending, start] = useTransition();
+  const ready = name.trim().length >= 2 && (kind === "topic" || first.trim().length >= 2);
+
+  const close = () => {
+    setOpen(false);
+    setName("");
+    setFirst("");
+  };
+
+  const save = () =>
+    start(async () => {
+      if (!ready) return;
+      if (kind === "category") {
+        const res = await createCategory({ label: name.trim(), firstTopic: first.trim() });
+        if (!res.ok) return void toast.error(res.error);
+        toast.success(`Categoria “${name.trim()}” criada.`);
+        onCreated(res.data);
+      } else {
+        const res = await createTopic({ category: category!, label: name.trim() });
+        if (!res.ok) return void toast.error(res.error);
+        toast.success(`Subcategoria “${name.trim()}” criada.`);
+        onCreated({ topic: res.data });
+      }
+      close();
+    });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-9 items-center gap-1.5 rounded-md border border-dashed border-border px-3 text-left text-[13px] text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent hover:text-foreground"
+      >
+        <Plus className="size-3.5" /> Nova
+      </button>
+    );
+  }
+
+  return (
+    <div
+      data-add-choice
+      className="col-span-full flex flex-col gap-2 rounded-md border border-dashed border-primary/50 bg-primary-soft/40 p-2 sm:flex-row sm:items-center"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") close();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+        }
+      }}
+    >
+      <Input
+        autoFocus
+        value={name}
+        maxLength={40}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={kind === "category" ? "Nova categoria (ex.: Treinamento)" : "Nova subcategoria"}
+        className="h-8 text-[13px]"
+        aria-label={kind === "category" ? "Nome da categoria" : "Nome da subcategoria"}
+      />
+      {kind === "category" && (
+        <Input
+          value={first}
+          maxLength={40}
+          onChange={(e) => setFirst(e.target.value)}
+          placeholder="Primeira subcategoria (ex.: Onboarding)"
+          className="h-8 text-[13px]"
+          aria-label="Primeira subcategoria"
+        />
+      )}
+      <div className="flex shrink-0 gap-1.5">
+        <Button type="button" size="sm" onClick={save} disabled={pending || !ready}>
+          {pending ? <Loader2 className="animate-spin" /> : <Check />} Criar
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={close} aria-label="Cancelar">
+          <X />
+        </Button>
+      </div>
+    </div>
   );
 }
