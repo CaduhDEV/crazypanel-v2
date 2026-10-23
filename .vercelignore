@@ -1,0 +1,6 @@
+# Não sobe no deploy pela CLI (as variáveis ficam no painel da Vercel)
+.env*
+!.env.example
+scripts/legacy-import/out/
+supabase/.temp/
+.vercel/

@@ -4,18 +4,6 @@
     {
       "path": "/api/cron/gleap",
       "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/gleap-tickets",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/cron/join-requests",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/report",
-      "schedule": "0 * * * *"
     }
   ]
 }
