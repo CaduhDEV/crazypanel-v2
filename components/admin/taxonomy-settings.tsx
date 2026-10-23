@@ -22,7 +22,7 @@ export function TaxonomySettings() {
   const categories = activeCategories(taxonomy);
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
+    <section className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5 lg:col-span-2">
       <div className="flex flex-col gap-1">
         <h2 className="text-sm font-semibold">Categorias dos atendimentos</h2>
         <p className="text-[13px] text-muted-foreground">

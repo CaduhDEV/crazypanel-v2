@@ -25,10 +25,9 @@ export default async function ConfiguracoesPage() {
         settings={settings}
         people={((people ?? []) as ReportPerson[]).map((p) => ({ id: p.id, name: p.name, email: p.email, avatar_url: p.avatar_url, whatsapp: p.whatsapp ?? null }))}
         reports={(reports ?? []) as IssuedReportRow[]}
-      />
-      <div className="max-w-5xl px-4 pb-8 sm:px-6">
+      >
         <TaxonomySettings />
-      </div>
+      </SettingsForm>
     </>
   );
 }

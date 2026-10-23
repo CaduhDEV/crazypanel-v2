@@ -12,7 +12,18 @@ import { Switch } from "@/components/ui/misc";
 import { PushSettings } from "@/components/admin/push-settings";
 import { ReportSettings, whatsappInput, type IssuedReportRow, type ReportPerson } from "@/components/admin/report-settings";
 
-export function SettingsForm({ settings, people, reports }: { settings: AppSettings; people: ReportPerson[]; reports: IssuedReportRow[] }) {
+export function SettingsForm({
+  settings,
+  people,
+  reports,
+  children,
+}: {
+  settings: AppSettings;
+  people: ReportPerson[];
+  reports: IssuedReportRow[];
+  /** Seções que salvam sozinhas (ex.: categorias): ficam na mesma grade, fora do formulário. */
+  children?: React.ReactNode;
+}) {
   const router = useRouter();
   const initial = useMemo(() => ({
     slaMinutes: Math.round(settings.sla_seconds / 60),
@@ -65,8 +76,11 @@ export function SettingsForm({ settings, people, reports }: { settings: AppSetti
   const warnAt = Math.round((form.slaMinutes * form.warningPercent) / 100 * 10) / 10;
 
   return (
-    <main className="flex-1 px-4 py-5 sm:px-6">
-      <form onSubmit={submit} className="grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
+    <main className="flex-1 px-4 pt-5 sm:px-6">
+      {/* Uma grade só: as seções do formulário e as que salvam sozinhas ficam alinhadas.
+          O formulário usa "contents" para os grupos dele entrarem direto na grade. */}
+      <div className="grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
+      <form id="settings-form" onSubmit={submit} className="contents">
         <Group title="SLA de resposta" description="Tempo entre a mensagem do lead e a primeira resposta da equipe.">
           <Field id="sla" label="Prazo (minutos)" hint="Depois disso o atendimento aparece como estourado.">
             <Input id="sla" type="number" min={1} max={1440} value={form.slaMinutes} onChange={num("slaMinutes")} className="w-32" />
@@ -142,13 +156,20 @@ export function SettingsForm({ settings, people, reports }: { settings: AppSetti
         </section>
 
         <ReportSettings value={form} onChange={(patch) => setForm({ ...form, ...patch })} people={people} reports={reports} dirty={reportDirty} />
+      </form>
 
-        <div className="flex justify-end lg:col-span-2">
-          <Button type="submit" disabled={pending}>
+      {children}
+      </div>
+
+      {/* Sempre à vista no fim da tela: vale para as seções do formulário (as categorias salvam na hora). */}
+      <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t border-border bg-background/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="flex max-w-5xl items-center justify-end gap-3">
+          <span className="hidden text-xs text-muted-foreground sm:inline">As categorias salvam na hora; o resto, neste botão.</span>
+          <Button type="submit" form="settings-form" disabled={pending}>
             {pending && <Loader2 className="animate-spin" />} Salvar configurações
           </Button>
         </div>
-      </form>
+      </div>
     </main>
   );
 }
