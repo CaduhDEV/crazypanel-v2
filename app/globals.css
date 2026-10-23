@@ -55,16 +55,17 @@
 }
 
 :root {
-  --background: #edf2fa;
-  --foreground: #131a24;
-  --sidebar: #f7f9fe;
+  /* Neutros quentes: fundo off-white, cards e janelas em branco. */
+  --background: #f7f6f3;
+  --foreground: #1a1917;
+  --sidebar: #fbfaf8;
   --card: #ffffff;
   --popover: #ffffff;
-  --muted: #e8eef8;
-  --muted-foreground: #5b6779;
-  --accent: #e4ebf7;
-  --border: #dbe3ef;
-  --input: #cfd9e8;
+  --muted: #f1f0ec;
+  --muted-foreground: #6b6862;
+  --accent: #efeee9;
+  --border: #e6e4de;
+  --input: #d9d6cf;
   --ring: #2f62a8;
   --primary: #2f62a8;
   --primary-hover: #2a5794;
