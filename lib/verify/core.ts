@@ -140,6 +140,10 @@ const OPEN_REQUEST = ["pending", "accepted", "invited"];
  * O lead só nasce quando um admin aceita a solicitação.
  */
 export async function assertEmailAvailable(db: Admin, email: string) {
+  // Conta da equipe do painel: o formulário é só para clientes. Sem isto, o código
+  // iria para a conta do atendente (e um link no e-mail o colocaria no painel).
+  const { count: staff } = await db.from("profiles").select("id", { count: "exact", head: true }).ilike("email", email);
+  if (staff) throw new VerifyError("email_staff", "Esse e-mail é de uma conta da equipe DataCrazy. Use o e-mail de cliente com que você acessa o CRM.", 409);
   const { count: leads } = await db.from("contacts").select("id", { count: "exact", head: true }).ilike("email", email);
   if (leads) throw new VerifyError("email_registered", "Esse e-mail já está cadastrado na comunidade.", 409);
   const { count: open } = await db
