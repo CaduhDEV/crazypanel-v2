@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { siteUrl } from "@/lib/site-url";
+import { sendPasswordLink } from "@/lib/auth/recovery";
 import { loginSchema, resetSchema, setPasswordSchema } from "@/lib/auth/validation";
 
 export type FormState =
@@ -51,10 +51,7 @@ export async function requestPasswordReset(_: FormState, formData: FormData): Pr
     return { fieldErrors: z.flattenError(parsed.error).fieldErrors, values: { email: String(formData.get("email") ?? "") } };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${await siteUrl()}/auth/confirm?next=/definir-senha`,
-  });
+  const error = await sendPasswordLink(parsed.data.email);
   if (error?.code === "over_email_send_rate_limit") {
     return { error: "Aguarde alguns minutos antes de pedir outro e-mail." };
   }

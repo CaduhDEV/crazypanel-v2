@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { emailSchema } from "@/lib/auth/validation";
 import { ActionError, runAction, type ActionResult } from "@/lib/action";
 import { siteUrl } from "@/lib/site-url";
+import { sendPasswordLink } from "@/lib/auth/recovery";
 
 const roleSchema = z.enum(["admin", "attendant"]);
 
@@ -25,7 +25,7 @@ export async function inviteAttendant(input: z.input<typeof inviteSchema>): Prom
 
     const { data, error } = await db.auth.admin.inviteUserByEmail(email, {
       data: { name },
-      redirectTo: `${await siteUrl()}/auth/confirm?next=/definir-senha`,
+      redirectTo: `${await siteUrl()}/auth/callback`,
     });
     if (error) {
       if (error.code === "email_exists" || /already been registered/i.test(error.message)) {
@@ -53,10 +53,8 @@ export async function resendAccess(input: z.input<typeof profileIdSchema>): Prom
     if (!profile) throw new ActionError("Atendente não encontrado.");
     if (!profile.active) throw new ActionError("Reative o acesso antes de reenviar.");
 
-    const supabase = await createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
-      redirectTo: `${await siteUrl()}/auth/confirm?next=/definir-senha`,
-    });
+    // Link que vale no navegador do atendente (não no do admin que clicou).
+    const error = await sendPasswordLink(profile.email);
     if (error?.code === "over_email_send_rate_limit") throw new ActionError("Aguarde alguns minutos antes de reenviar.");
     if (error) throw error;
   });

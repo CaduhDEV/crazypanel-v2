@@ -1,8 +1,10 @@
 import { Logo } from "@/components/logo";
+import { EmailLinkForwarder } from "@/components/auth/email-link-forwarder";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <EmailLinkForwarder />
       <section className="flex flex-col px-6 py-8 sm:px-12">
         <Logo />
         <div className="flex flex-1 items-center">
