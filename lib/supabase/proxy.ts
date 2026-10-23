@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas acessíveis sem sessão. O webhook se autentica pelo segredo na URL.
-const PUBLIC_ROUTES = ["/login", "/esqueci-senha", "/auth", "/api/webhooks", "/api/cron", "/api/community", "/api/verify"];
+// "/" é a landing (quem está logado vai direto para o atendimento).
+const PUBLIC_ROUTES = ["/", "/login", "/esqueci-senha", "/auth", "/api/webhooks", "/api/cron", "/api/community", "/api/verify"];
 // Rotas que não fazem sentido para quem já está logado.
 const GUEST_ONLY_ROUTES = ["/login", "/esqueci-senha"];
 
@@ -56,7 +57,7 @@ export async function updateSession(request: NextRequest) {
     return redirect("/login");
   }
   if (isLoggedIn && matches(pathname, GUEST_ONLY_ROUTES)) {
-    return redirect("/");
+    return redirect("/atendimento");
   }
 
   return response;
