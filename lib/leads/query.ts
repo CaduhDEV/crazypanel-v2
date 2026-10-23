@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
+import { KINDS_NEEDING_COMPANY } from "@/lib/types";
 
 // Filtros da tela de Leads, compartilhados com a exportação em CSV.
 
@@ -31,7 +32,7 @@ export function leadsQuery(supabase: Supabase, f: LeadFilters, columns: string, 
   let query = supabase.from("contacts").select(`${columns}, ${membership}`, opts.count ? { count: "exact" } : undefined);
 
   if (f.group) query = query.eq("memberships.group_jid", f.group).is("memberships.left_at", null);
-  if (f.link === "sem-vinculo") query = query.eq("kind", "customer").is("company_id", null);
+  if (f.link === "sem-vinculo") query = query.in("kind", KINDS_NEEDING_COMPANY).is("company_id", null);
   if (f.link === "vinculados") query = query.not("company_id", "is", null);
   if (f.link === "parceiros") query = query.eq("kind", "partner");
   if (f.link === "equipe") query = query.eq("kind", "team");

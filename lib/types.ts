@@ -232,6 +232,11 @@ export const CLOSE_REASONS = {
 
 export type CloseReason = keyof typeof CLOSE_REASONS;
 
+/** Cliente e parceiro precisam de empresa vinculada (os atendimentos contam na conta dela); a equipe não. */
+export const needsCompany = (kind: ContactKind | null | undefined) => kind === "customer" || kind === "partner";
+/** Tipos que precisam de empresa (para os filtros no banco). */
+export const KINDS_NEEDING_COMPANY: ContactKind[] = ["customer", "partner"];
+
 export const CONTACT_KIND_LABELS: Record<ContactKind, string> = {
   customer: "Cliente",
   partner: "Parceiro",

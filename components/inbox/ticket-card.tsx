@@ -3,6 +3,7 @@
 import { Clock, MessagesSquare } from "lucide-react";
 import { cn, contactLabel, formatRelative, pluralize } from "@/lib/utils";
 import type { TicketWithRelations } from "@/lib/types";
+import { needsCompany } from "@/lib/types";
 import { Avatar, AvatarStack } from "@/components/ui/avatar";
 import { Tip } from "@/components/ui/misc";
 import { SlaBadge } from "@/components/inbox/sla-badge";
@@ -18,7 +19,7 @@ export function TicketCard({ ticket, onOpen }: { ticket: TicketWithRelations; on
   const viewers = (viewersByTicket[ticket.id] ?? []).filter((v) => v.id !== profile.id);
   const assignee = ticket.assignee_id ? memberById.get(ticket.assignee_id) : null;
   const name = contactLabel(ticket.contact);
-  const unlinked = ticket.contact?.kind === "customer" && !ticket.contact.company_id;
+  const unlinked = needsCompany(ticket.contact?.kind) && !ticket.contact?.company_id;
   const { data: gleapByContact } = useGleapTicketsByContact();
   const gleap = gleapByContact?.get(ticket.contact_id) ?? [];
 

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { updateContactNotes } from "@/lib/leads/actions";
 import { cn, contactLabel, formatPhone, formatRelative, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, CONTACT_KIND_LABELS, type Ticket } from "@/lib/types";
+import { CLOSE_REASONS, CONTACT_KIND_LABELS, needsCompany, type Ticket } from "@/lib/types";
 import { classificationLabel } from "@/lib/taxonomy";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +59,7 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
   if (!contact) return null;
   if (isLoading) return <LeadPanelSkeleton />;
   const name = contactLabel(contact);
-  const unlinked = contact.kind === "customer" && !contact.company_id;
+  const unlinked = needsCompany(contact.kind) && !contact.company_id;
 
   const copyPhone = async () => {
     try {
@@ -121,7 +121,7 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
         ) : unlinked ? (
           <div className="flex gap-2 rounded-md border border-warning/30 bg-warning-soft p-2.5 text-xs text-warning">
             <AlertTriangle className="size-4 shrink-0" />
-            Sem empresa vinculada. O atendimento não conta para a conta do cliente.
+            Sem empresa vinculada. O atendimento não conta para a conta {contact.kind === "partner" ? "do parceiro" : "do cliente"}.
           </div>
         ) : (
           <span className="text-sm text-muted-foreground">{CONTACT_KIND_LABELS[contact.kind]} sem empresa vinculada (opcional).</span>

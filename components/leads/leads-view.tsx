@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Building2, ChevronLeft, ChevronRight, Contact as ContactIcon, Handshake, Download, Loader2, Search, ShieldCheck } from "lucide-react";
 import { cn, contactLabel, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
 import type { Company, Contact } from "@/lib/types";
+import { needsCompany } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -199,7 +200,7 @@ export function LeadsView({
           <tbody className={cn(navigating && "opacity-60")}>
             {rows.map((r) => {
               const activeGroups = r.memberships.filter((m) => !m.left_at);
-              const unlinked = r.kind === "customer" && !r.company_id;
+              const unlinked = needsCompany(r.kind) && !r.company_id;
               return (
                 <tr key={r.id} className="border-b border-border last:border-b-0 hover:bg-accent/30">
                   <td className="px-4 py-2.5">

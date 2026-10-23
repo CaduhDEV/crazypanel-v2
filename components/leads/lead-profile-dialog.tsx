@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { callApi } from "@/lib/api-client";
 import { deleteContact, getContactDeletionImpact } from "@/lib/leads/actions";
 import { cn, contactLabel, formatDuration, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
-import { CLOSE_REASONS, CONTACT_KIND_LABELS, type Company, type Contact } from "@/lib/types";
+import { CLOSE_REASONS, CONTACT_KIND_LABELS, needsCompany, type Company, type Contact } from "@/lib/types";
 import { classificationLabel } from "@/lib/taxonomy";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -192,7 +192,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
             <Badge variant={c.kind === "customer" ? "neutral" : "primary"}>{CONTACT_KIND_LABELS[c.kind]}</Badge>
             <Badge variant={activeGroups.length ? "primary" : "outline"}>{activeGroups.length ? "Na comunidade" : "Fora da comunidade"}</Badge>
             {c.left_community_at && <Badge variant="outline">Ex-membro desde {formatRelative(c.left_community_at)}</Badge>}
-            {c.kind === "customer" && !c.company_id && <Badge variant="warning">Sem empresa vinculada</Badge>}
+            {needsCompany(c.kind) && !c.company_id && <Badge variant="warning">Sem empresa vinculada</Badge>}
             {c.strikes > 0 && <Badge variant="destructive">{pluralize(c.strikes, "advertência", "advertências")}</Badge>}
           </span>
         </div>
@@ -230,7 +230,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
             </>
           ) : (
             <p className="col-span-2 text-sm text-muted-foreground">
-              {c.kind === "customer"
+              {needsCompany(c.kind)
                 ? c.gleap_status === "ambiguous"
                   ? "O telefone aparece em mais de uma empresa no Gleap: escolha a principal abaixo."
                   : "Sem empresa vinculada."

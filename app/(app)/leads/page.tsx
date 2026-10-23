@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { KINDS_NEEDING_COMPANY } from "@/lib/types";
 import { requireAdminPage } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/app/page-header";
@@ -31,17 +32,19 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
   );
 
   const from = (page - 1) * PAGE_SIZE;
-  const [result, groups, linked, unlinked, partners, team] = await Promise.all([
+  const [result, groups, linked, unlinked, partners, team, everyone] = await Promise.all([
     query.range(from, from + PAGE_SIZE - 1),
     supabase.from("wa_groups").select("jid, name, listening").order("name"),
     supabase.from("contacts").select("id", { count: "exact", head: true }).not("company_id", "is", null),
-    supabase.from("contacts").select("id", { count: "exact", head: true }).eq("kind", "customer").is("company_id", null),
+    // Sem vínculo: clientes e parceiros sem empresa (a equipe não precisa).
+    supabase.from("contacts").select("id", { count: "exact", head: true }).in("kind", KINDS_NEEDING_COMPANY).is("company_id", null),
     supabase.from("contacts").select("id", { count: "exact", head: true }).eq("kind", "partner"),
     supabase.from("contacts").select("id", { count: "exact", head: true }).eq("kind", "team"),
+    supabase.from("contacts").select("id", { count: "exact", head: true }),
   ]);
 
   const total = result.count ?? 0;
-  const allContacts = (linked.count ?? 0) + (unlinked.count ?? 0) + (partners.count ?? 0) + (team.count ?? 0);
+  const allContacts = everyone.count ?? 0;
 
   return (
     <>
