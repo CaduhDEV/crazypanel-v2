@@ -20,6 +20,24 @@ export interface AiRequestRow {
   ticket: { number: number } | null;
 }
 
+export interface AiCallbackRow {
+  id: number;
+  received_at: string;
+  payload: { status: number; content_type?: string; result?: unknown; body?: string };
+}
+
+/** O que o painel respondeu ao agente, em uma linha. */
+function callbackText(c: AiCallbackRow): string {
+  const r = c.payload.result;
+  if (typeof r === "string") return r;
+  if (Array.isArray(r)) {
+    return r
+      .map((x: { ok?: boolean; outcome?: string; reason?: string; error?: string }) => (x.ok ? (x.outcome === "closed" ? "encerrado" : `sugestão${x.reason ? ` (${x.reason})` : ""}`) : (x.error ?? "erro")))
+      .join("; ");
+  }
+  return "";
+}
+
 const STATUS_TEXT: Record<AiRequestRow["status"], string> = {
   sent: "Aguardando o agente",
   done: "Classificado",
@@ -31,7 +49,17 @@ const STATUS_TEXT: Record<AiRequestRow["status"], string> = {
  * Agente de IA do CRM: classifica os atendimentos parados e, quando é seguro,
  * encerra. Salva sozinho (fora do botão "Salvar configurações").
  */
-export function AiSettings({ configured, callbackUrl, requests }: { configured: boolean; callbackUrl: string; requests: AiRequestRow[] }) {
+export function AiSettings({
+  configured,
+  callbackUrl,
+  requests,
+  callbacks,
+}: {
+  configured: boolean;
+  callbackUrl: string;
+  requests: AiRequestRow[];
+  callbacks: AiCallbackRow[];
+}) {
   const { settings } = useApp();
   const [form, setForm] = useState({
     enabled: settings.ai_enabled,
@@ -137,6 +165,24 @@ export function AiSettings({ configured, callbackUrl, requests }: { configured: 
               {copied === "url" ? <Check /> : <Copy />}
             </Button>
           </div>
+          <span className="pt-2 text-[13px] font-medium">Últimos retornos do agente</span>
+          {callbacks.length ? (
+            <ul className="flex flex-col divide-y divide-border rounded-md border border-border text-xs">
+              {callbacks.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-3 px-3 py-2" title={c.payload.body ?? undefined}>
+                  <span className="flex min-w-0 flex-col">
+                    <span className={cn("font-medium", c.payload.status === 200 ? "text-success" : "text-destructive")}>
+                      {c.payload.status === 200 ? "Recebido" : `Recusado (${c.payload.status})`}
+                    </span>
+                    <span className="truncate text-muted-foreground">{callbackText(c)}</span>
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">{formatRelative(c.received_at)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted-foreground">Nenhuma chamada do agente chegou ainda.</p>
+          )}
           <span className="pt-2 text-[13px] font-medium">Últimos envios</span>
           {requests.length ? (
             <ul className="flex flex-col divide-y divide-border rounded-md border border-border text-xs">

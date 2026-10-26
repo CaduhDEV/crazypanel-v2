@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app/page-header";
 import { SettingsForm } from "@/components/admin/settings-form";
 import { TaxonomySettings } from "@/components/admin/taxonomy-settings";
-import { AiSettings, type AiRequestRow } from "@/components/admin/ai-settings";
+import { AiSettings, type AiCallbackRow, type AiRequestRow } from "@/components/admin/ai-settings";
 import { aiConfigured } from "@/lib/ai/classify";
 import { siteUrl } from "@/lib/site-url";
 import type { IssuedReportRow, ReportPerson } from "@/components/admin/report-settings";
@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Configurações" };
 export default async function ConfiguracoesPage() {
   await requireAdminPage();
   const db = createAdminClient();
-  const [settings, { data: people }, { data: reports }, { data: aiRequests }, base] = await Promise.all([
+  const [settings, { data: people }, { data: reports }, { data: aiRequests }, base, { data: aiCallbacks }] = await Promise.all([
     getSettings(),
     // "*": whatsapp pode não existir antes da migration.
     db.from("profiles").select("*").eq("active", true).order("name"),
@@ -23,6 +23,7 @@ export default async function ConfiguracoesPage() {
     // Antes da migration a tabela não existe: lista vazia.
     db.from("ai_classification_requests").select("id, status, outcome, sent_at, error, ticket:tickets(number)").order("sent_at", { ascending: false }).limit(8),
     siteUrl(),
+    db.from("webhook_events").select("id, received_at, payload").eq("event_type", "ai_callback").order("id", { ascending: false }).limit(5),
   ]);
   const callbackUrl = `${base}/api/ai/classificacoes?key=${encodeURIComponent(process.env.AI_WEBHOOK_SECRET ?? "")}`;
   return (
@@ -34,7 +35,7 @@ export default async function ConfiguracoesPage() {
         reports={(reports ?? []) as IssuedReportRow[]}
       >
         <TaxonomySettings />
-        <AiSettings configured={aiConfigured()} callbackUrl={callbackUrl} requests={(aiRequests ?? []) as unknown as AiRequestRow[]} />
+        <AiSettings configured={aiConfigured()} callbackUrl={callbackUrl} requests={(aiRequests ?? []) as unknown as AiRequestRow[]} callbacks={(aiCallbacks ?? []) as unknown as AiCallbackRow[]} />
       </SettingsForm>
     </>
   );
