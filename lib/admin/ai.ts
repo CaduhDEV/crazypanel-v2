@@ -39,3 +39,17 @@ export async function sendIdleTicketsToAi(): Promise<ActionResult<DispatchResult
     return result;
   });
 }
+
+const ticketSchema = z.object({ ticketId: z.uuid() });
+
+/** Teste: manda um atendimento só para o agente. O retorno só deixa a sugestão, não encerra. */
+export async function sendTicketToAi(input: z.input<typeof ticketSchema>): Promise<ActionResult<void>> {
+  return runAction(ticketSchema, input, async ({ ticketId }) => {
+    const admin = await requireAdmin();
+    if (!aiConfigured()) throw new ActionError("Defina AI_AGENT_WEBHOOK_URL e AI_WEBHOOK_SECRET nas variáveis do painel.");
+    const result = await dispatchIdleTickets({ actorId: admin.id, ticketIds: [ticketId], allowClose: false });
+    if (!result.sent) {
+      throw new ActionError(result.skipped ? "Este atendimento não tem mensagens de texto para a IA ler." : "Não foi possível enviar ao agente. Veja os últimos envios em Configurações.");
+    }
+  });
+}

@@ -17,6 +17,7 @@ import { FinishDialog } from "@/components/conversation/finish-dialog";
 import { LeadPanel } from "@/components/conversation/lead-panel";
 import { MessageItem } from "@/components/conversation/message-item";
 import { ContextSuggestions } from "@/components/conversation/context-suggestions";
+import { AiSuggestionBox, AiTestButton } from "@/components/conversation/ai-suggestion";
 import { resolveAuthor } from "@/components/conversation/message-utils";
 import {
   useGroupSettingEvents,
@@ -49,7 +50,7 @@ export function ChatPanel({
   onNavigate: (ticketId: string) => void;
   onFinished: () => void;
 }) {
-  const { memberById, profile, taxonomy } = useApp();
+  const { memberById, profile, taxonomy, isAdmin } = useApp();
   const { viewersByTicket, setViewingTicket } = usePresence();
   const { data: ticket, isLoading: ticketLoading } = useTicket(ticketId);
   const { data: thread, isLoading: threadLoading } = useThread(ticketId);
@@ -73,6 +74,8 @@ export function ChatPanel({
   const [finishMode, setFinishMode] = useState<"resolved" | "parallel" | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Teste da IA: quando foi enviado (o quadro mostra "aguardando" até a resposta chegar).
+  const [aiSentAt, setAiSentAt] = useState<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<ComposerHandle>(null);
@@ -191,6 +194,7 @@ export function ChatPanel({
               </Tip>
             )}
             <AssigneeMenu ticketId={ticket.id} assigneeId={ticket.assignee_id} disabled={closed} />
+            {isAdmin && !closed && <AiTestButton ticketId={ticket.id} onSent={() => setAiSentAt(Date.now())} />}
             <Tip label={panelOpen ? "Ocultar dados do lead" : "Mostrar dados do lead"}>
               <Button variant="ghost" size="icon-sm" onClick={() => onPanelOpenChange(!panelOpen)} className="hidden xl:inline-flex" aria-label="Dados do lead">
                 {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}
@@ -258,6 +262,7 @@ export function ChatPanel({
           </Button>
         )}
 
+        <AiSuggestionBox ticket={ticket} waitingSince={aiSentAt} />
         <ContextSuggestions ticketId={ticket.id} disabled={closed} />
 
         <Composer

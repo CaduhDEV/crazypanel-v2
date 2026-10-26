@@ -138,7 +138,15 @@ export interface DispatchResult {
  * mensagem há ai_idle_minutes) que ainda não foram classificados depois da
  * última mensagem.
  */
-export async function dispatchIdleTickets(opts: { actorId?: string | null; ticketIds?: string[] } = {}): Promise<DispatchResult> {
+export async function dispatchIdleTickets(
+  opts: {
+    actorId?: string | null;
+    /** Atendimentos escolhidos (teste): vão mesmo com responsável ou mensagem recente. */
+    ticketIds?: string[];
+    /** false: o retorno só deixa a sugestão, não encerra. */
+    allowClose?: boolean;
+  } = {},
+): Promise<DispatchResult> {
   if (!aiConfigured()) throw new Error("Defina AI_AGENT_WEBHOOK_URL e AI_WEBHOOK_SECRET para usar o agente de IA.");
   const db = createAdminClient();
   const [settings, taxonomy, base] = await Promise.all([getSettings(), getTaxonomy(), siteUrl()]);
@@ -154,9 +162,9 @@ export async function dispatchIdleTickets(opts: { actorId?: string | null; ticke
   const { data, error } = await query;
   if (error) throw error;
 
-  // Já classificado depois da última mensagem: não manda de novo.
+  // Já classificado depois da última mensagem: não manda de novo (o teste manda sempre).
   const candidates = ((data ?? []) as unknown as (TicketRow & { last_message_at: string; ai_classified_at: string | null })[]).filter(
-    (t) => !t.ai_classified_at || Date.parse(t.ai_classified_at) < Date.parse(t.last_message_at),
+    (t) => !!opts.ticketIds?.length || !t.ai_classified_at || Date.parse(t.ai_classified_at) < Date.parse(t.last_message_at),
   );
   // Enviado há pouco e sem resposta: espera.
   const { data: pending } = candidates.length
@@ -167,7 +175,7 @@ export async function dispatchIdleTickets(opts: { actorId?: string | null; ticke
         .in("ticket_id", candidates.map((t) => t.id))
         .gte("sent_at", new Date(Date.now() - RESEND_AFTER_MS).toISOString())
     : { data: [] };
-  const waiting = new Set(((pending ?? []) as { ticket_id: string }[]).map((p) => p.ticket_id));
+  const waiting = new Set(opts.ticketIds?.length ? [] : ((pending ?? []) as { ticket_id: string }[]).map((p) => p.ticket_id));
   const batch = candidates.filter((t) => !waiting.has(t.id)).slice(0, PER_RUN);
 
   const result: DispatchResult = { sent: 0, failed: 0, skipped: candidates.length - batch.length };
@@ -178,7 +186,7 @@ export async function dispatchIdleTickets(opts: { actorId?: string | null; ticke
       batch.slice(i, i + CONCURRENCY).map(async (ticket) => {
         const { data: req, error: reqError } = await db
           .from("ai_classification_requests")
-          .insert({ ticket_id: ticket.id, created_by: opts.actorId ?? null })
+          .insert({ ticket_id: ticket.id, created_by: opts.actorId ?? null, allow_close: opts.allowClose ?? true })
           .select("id")
           .single();
         if (reqError || !req) {
@@ -287,8 +295,8 @@ function normalize(item: unknown, taxonomy: Taxonomy): AgentResult | string {
 /** Grava a sugestão e, quando é seguro, encerra o atendimento. */
 async function applyOne(db: Admin, r: AgentResult, settings: AppSettings): Promise<ApplyOutcome> {
   const { data: req } = r.request_id
-    ? await db.from("ai_classification_requests").select("id, ticket_id, sent_at").eq("id", r.request_id).maybeSingle()
-    : await db.from("ai_classification_requests").select("id, ticket_id, sent_at").eq("ticket_id", r.ticket_id!).order("sent_at", { ascending: false }).limit(1).maybeSingle();
+    ? await db.from("ai_classification_requests").select("id, ticket_id, sent_at, allow_close").eq("id", r.request_id).maybeSingle()
+    : await db.from("ai_classification_requests").select("id, ticket_id, sent_at, allow_close").eq("ticket_id", r.ticket_id!).order("sent_at", { ascending: false }).limit(1).maybeSingle();
   if (!req) return { ok: false, request_id: r.request_id, ticket_id: r.ticket_id, error: "envio não encontrado" };
   const ticketId = req.ticket_id as string;
 
@@ -316,6 +324,7 @@ async function applyOne(db: Admin, r: AgentResult, settings: AppSettings): Promi
   // Só encerra quando é seguro.
   let reason: string | undefined;
   if (ticket.status !== "open") reason = "já estava finalizado";
+  else if (req.allow_close === false) reason = "teste: só sugestão";
   else if (!settings.ai_auto_close) reason = "encerramento automático desligado";
   else if (r.needs_team) reason = "a IA indicou que precisa da equipe";
   else if (r.confidence < settings.ai_min_confidence) reason = `confiança ${Math.round(r.confidence * 100)}% abaixo do mínimo`;
