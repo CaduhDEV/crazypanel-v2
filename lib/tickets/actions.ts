@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin, requireMember } from "@/lib/auth/session";
@@ -14,6 +15,7 @@ import type { Message, Profile, ResolvedBy } from "@/lib/types";
 import { RESOLVED_BY, VOICE_NOTE_PREFIX } from "@/lib/types";
 import { isActivePair } from "@/lib/taxonomy";
 import { getTaxonomy } from "@/lib/taxonomy-server";
+import { aiConfigured, dispatchIdleTickets } from "@/lib/ai/classify";
 
 const id = z.uuid({ error: "Identificador inválido." });
 
@@ -459,10 +461,35 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
 const clearSchema = z.object({ groupJids: z.array(z.string().endsWith("@g.us")).optional() });
 
 /** Admin: encerra de uma vez os atendimentos abertos (todos ou de alguns grupos). */
-export async function clearQueue(input: z.input<typeof clearSchema>): Promise<ActionResult<number>> {
+/** Até quantos atendimentos o Limpar fila manda para a IA de uma vez (o resto finaliza na hora). */
+const CLEAR_VIA_AI_MAX = 150;
+
+/**
+ * Admin: encerra os atendimentos abertos (todos ou de alguns grupos). Com o agente
+ * de IA configurado, cada um vai para a IA e é finalizado quando a classificação
+ * volta (já com categoria); sem resposta em 15 min, finaliza sem categoria.
+ */
+export async function clearQueue(input: z.input<typeof clearSchema>): Promise<ActionResult<{ total: number; viaAi: number }>> {
   return runAction(clearSchema, input, async ({ groupJids }) => {
     const profile = await requireAdmin();
     const db = createAdminClient();
+
+    let viaAiIds: string[] = [];
+    if (aiConfigured()) {
+      let open = db.from("tickets").select("id").eq("status", "open").order("waiting_since", { ascending: true, nullsFirst: false }).limit(CLEAR_VIA_AI_MAX);
+      if (groupJids?.length) open = open.in("group_jid", groupJids);
+      const { data: rows } = await open;
+      viaAiIds = ((rows ?? []) as { id: string }[]).map((t) => t.id);
+      if (viaAiIds.length) {
+        // Em segundo plano: a resposta volta já, a fila vai esvaziando conforme a IA classifica.
+        after(() =>
+          dispatchIdleTickets({ actorId: profile.id, ticketIds: viaAiIds, closeOnReturn: true, max: CLEAR_VIA_AI_MAX }).catch((e) =>
+            console.error("[limpar fila] envio para a IA:", e),
+          ),
+        );
+      }
+    }
+
     let query = db
       .from("tickets")
       .update({
@@ -474,6 +501,8 @@ export async function clearQueue(input: z.input<typeof clearSchema>): Promise<Ac
       })
       .eq("status", "open");
     if (groupJids?.length) query = query.in("group_jid", groupJids);
+    // Os que foram para a IA ficam abertos até a classificação voltar.
+    if (viaAiIds.length) query = query.not("id", "in", `(${viaAiIds.join(",")})`);
     const { data, error } = await query.select("id");
     if (error) throw error;
 
@@ -482,7 +511,7 @@ export async function clearQueue(input: z.input<typeof clearSchema>): Promise<Ac
         data.map((t) => ({ ticket_id: t.id, type: "closed", actor_id: profile.id, data: { reason: "sla_cleared" } })),
       );
     }
-    return data?.length ?? 0;
+    return { total: viaAiIds.length + (data?.length ?? 0), viaAi: viaAiIds.length };
   });
 }
 

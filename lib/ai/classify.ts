@@ -146,6 +146,10 @@ export async function dispatchIdleTickets(
     ticketIds?: string[];
     /** false: o retorno só deixa a sugestão, não encerra. */
     allowClose?: boolean;
+    /** Limpar fila: finaliza quando a classificação volta (e na hora, se o envio falhar). */
+    closeOnReturn?: boolean;
+    /** Quantos atendimentos no máximo (padrão PER_RUN). */
+    max?: number;
   } = {},
 ): Promise<DispatchResult> {
   if (!aiConfigured()) throw new Error("Defina AI_AGENT_WEBHOOK_URL e AI_WEBHOOK_SECRET para usar o agente de IA.");
@@ -158,7 +162,7 @@ export async function dispatchIdleTickets(
     .select("id, number, group_jid, contact_id, subject, opened_at, last_message_at, ai_classified_at, group:wa_groups(name)")
     .eq("status", "open")
     .order("last_message_at", { ascending: true })
-    .limit(PER_RUN * 3);
+    .limit(Math.max(PER_RUN, opts.max ?? 0) * 3);
   query = opts.ticketIds?.length ? query.in("id", opts.ticketIds) : query.is("assignee_id", null).lt("last_message_at", idleBefore);
   const { data, error } = await query;
   if (error) throw error;
@@ -177,27 +181,30 @@ export async function dispatchIdleTickets(
         .gte("sent_at", new Date(Date.now() - RESEND_AFTER_MS).toISOString())
     : { data: [] };
   const waiting = new Set(opts.ticketIds?.length ? [] : ((pending ?? []) as { ticket_id: string }[]).map((p) => p.ticket_id));
-  const batch = candidates.filter((t) => !waiting.has(t.id)).slice(0, PER_RUN);
+  const batch = candidates.filter((t) => !waiting.has(t.id)).slice(0, opts.max ?? PER_RUN);
 
   const result: DispatchResult = { sent: 0, failed: 0, skipped: candidates.length - batch.length };
   const callbackUrl = `${base}/api/ai/classificacoes?key=${encodeURIComponent(process.env.AI_WEBHOOK_SECRET!)}`;
 
-  for (let i = 0; i < batch.length; i += CONCURRENCY) {
+  const concurrency = opts.closeOnReturn ? CONCURRENCY * 2 : CONCURRENCY;
+  for (let i = 0; i < batch.length; i += concurrency) {
     await Promise.all(
-      batch.slice(i, i + CONCURRENCY).map(async (ticket) => {
+      batch.slice(i, i + concurrency).map(async (ticket) => {
         const { data: req, error: reqError } = await db
           .from("ai_classification_requests")
-          .insert({ ticket_id: ticket.id, created_by: opts.actorId ?? null, allow_close: opts.allowClose ?? true })
+          .insert({ ticket_id: ticket.id, created_by: opts.actorId ?? null, allow_close: opts.allowClose ?? true, close_on_return: !!opts.closeOnReturn })
           .select("id")
           .single();
         if (reqError || !req) {
           result.failed++;
+          if (opts.closeOnReturn) await closeCleared(db, ticket.id, opts.actorId ?? null, null);
           return;
         }
         const payload = await buildPayload(db, ticket, req.id as string, taxonomy, callbackUrl);
         if (!payload.messages.length) {
           await db.from("ai_classification_requests").update({ status: "failed", error: "sem mensagens de texto" }).eq("id", req.id);
           result.skipped++;
+          if (opts.closeOnReturn) await closeCleared(db, ticket.id, opts.actorId ?? null, null);
           return;
         }
         const sent = await postToAgent(JSON.stringify(payload));
@@ -205,11 +212,67 @@ export async function dispatchIdleTickets(
         else {
           result.failed++;
           await db.from("ai_classification_requests").update({ status: "failed", error: sent.error }).eq("id", req.id);
+          if (opts.closeOnReturn) await closeCleared(db, ticket.id, opts.actorId ?? null, null);
         }
       }),
     );
   }
   return result;
+}
+
+/**
+ * Finaliza como "Fila limpa pelo admin" (Limpar fila), com a classificação da IA
+ * quando ela voltou. Só mexe se o atendimento ainda estiver aberto.
+ */
+async function closeCleared(
+  db: Admin,
+  ticketId: string,
+  actorId: string | null,
+  cls: Pick<AgentResult, "category" | "topic" | "resolved_by" | "summary" | "confidence" | "resolution_message_id"> | null,
+): Promise<boolean> {
+  const { data: closed } = await db
+    .from("tickets")
+    .update({
+      status: "closed",
+      closed_at: new Date().toISOString(),
+      closed_by: actorId,
+      close_reason: "sla_cleared",
+      waiting_since: null,
+      ...(cls ? { category: cls.category, topic: cls.topic, resolved_by: cls.resolved_by, resolution_message_id: cls.resolution_message_id } : {}),
+    })
+    .eq("id", ticketId)
+    .eq("status", "open")
+    .select("id");
+  if (!closed?.length) return false;
+  await db.from("ticket_events").insert({
+    ticket_id: ticketId,
+    type: "closed",
+    actor_id: actorId,
+    data: cls
+      ? { reason: "sla_cleared", category: cls.category, topic: cls.topic, resolved_by: cls.resolved_by, ai: true, confidence: cls.confidence }
+      : { reason: "sla_cleared" },
+  });
+  return true;
+}
+
+const CLEAR_TIMEOUT_MS = 15 * 60 * 1000;
+
+/** Limpar fila: o que a IA não devolveu em 15 min é finalizado sem categoria. */
+export async function closeStaleClears(): Promise<number> {
+  const db = createAdminClient();
+  const { data } = await db
+    .from("ai_classification_requests")
+    .select("id, ticket_id, created_by")
+    .eq("close_on_return", true)
+    .in("status", ["sent", "rejected", "failed"])
+    .lt("sent_at", new Date(Date.now() - CLEAR_TIMEOUT_MS).toISOString())
+    .limit(500);
+  let closed = 0;
+  for (const r of (data ?? []) as { id: string; ticket_id: string; created_by: string | null }[]) {
+    if (await closeCleared(db, r.ticket_id, r.created_by, null)) closed++;
+    await db.from("ai_classification_requests").update({ status: "failed", close_on_return: false, error: "sem resposta da IA em 15 min: finalizado sem categoria" }).eq("id", r.id);
+  }
+  return closed;
 }
 
 // =============================================================================
@@ -299,8 +362,8 @@ function normalize(item: unknown, taxonomy: Taxonomy): AgentResult | string {
 /** Grava a sugestão e, quando é seguro, encerra o atendimento. */
 async function applyOne(db: Admin, r: AgentResult, settings: AppSettings): Promise<ApplyOutcome> {
   const { data: req } = r.request_id
-    ? await db.from("ai_classification_requests").select("id, ticket_id, sent_at, allow_close").eq("id", r.request_id).maybeSingle()
-    : await db.from("ai_classification_requests").select("id, ticket_id, sent_at, allow_close").eq("ticket_id", r.ticket_id!).order("sent_at", { ascending: false }).limit(1).maybeSingle();
+    ? await db.from("ai_classification_requests").select("id, ticket_id, sent_at, allow_close, close_on_return, created_by").eq("id", r.request_id).maybeSingle()
+    : await db.from("ai_classification_requests").select("id, ticket_id, sent_at, allow_close, close_on_return, created_by").eq("ticket_id", r.ticket_id!).order("sent_at", { ascending: false }).limit(1).maybeSingle();
   if (!req) return { ok: false, request_id: r.request_id, ticket_id: r.ticket_id, error: "envio não encontrado" };
   const ticketId = req.ticket_id as string;
 
@@ -339,6 +402,16 @@ async function applyOne(db: Admin, r: AgentResult, settings: AppSettings): Promi
       ai_classified_at: now,
     })
     .eq("id", ticketId);
+
+  // Limpar fila: o admin pediu para finalizar; a IA só traz a classificação.
+  if (req.close_on_return) {
+    const done = await closeCleared(db, ticketId, (req.created_by as string | null) ?? null, r);
+    await db
+      .from("ai_classification_requests")
+      .update({ status: "done", received_at: now, outcome: done ? "closed" : "suggested", response: r, error: done ? null : "já estava finalizado" })
+      .eq("id", req.id);
+    return { ok: true, ticket_id: ticketId, outcome: done ? "closed" : "suggested", reason: done ? "limpar fila" : "já estava finalizado" };
+  }
 
   // Só encerra quando é seguro.
   let reason: string | undefined;
@@ -405,7 +478,16 @@ export async function handleAgentResult(raw: unknown): Promise<ApplyOutcome[]> {
     if (typeof r === "string") {
       const o = item as Record<string, unknown>;
       const requestId = typeof o?.request_id === "string" ? o.request_id : undefined;
-      if (requestId) await db.from("ai_classification_requests").update({ status: "rejected", received_at: new Date().toISOString(), error: r, response: o }).eq("id", requestId);
+      if (requestId) {
+        const { data: req } = await db
+          .from("ai_classification_requests")
+          .update({ status: "rejected", received_at: new Date().toISOString(), error: r, response: o })
+          .eq("id", requestId)
+          .select("ticket_id, close_on_return, created_by")
+          .maybeSingle();
+        // Limpar fila: resposta inválida não segura o atendimento aberto.
+        if (req?.close_on_return) await closeCleared(db, req.ticket_id as string, (req.created_by as string | null) ?? null, null);
+      }
       out.push({ ok: false, request_id: requestId, error: r });
       continue;
     }

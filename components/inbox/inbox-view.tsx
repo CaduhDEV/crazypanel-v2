@@ -260,7 +260,12 @@ function ClearQueueDialog({
       if (!res.ok) return void toast.error(res.error);
       // Atualiza a fila na hora (não espera o Realtime, que chega um evento por atendimento).
       await queryClient.invalidateQueries({ queryKey: ["tickets"] });
-      toast.success(`${pluralize(res.data, "atendimento finalizado", "atendimentos finalizados")}.`);
+      const { total, viaAi } = res.data;
+      toast.success(
+        viaAi
+          ? `${pluralize(viaAi, "atendimento enviado", "atendimentos enviados")} para a IA classificar: cada um é finalizado quando a classificação volta.${total > viaAi ? ` ${total - viaAi} finalizados na hora.` : ""}`
+          : `${pluralize(total, "atendimento finalizado", "atendimentos finalizados")}.`,
+      );
       onOpenChange(false);
     });
 
@@ -273,7 +278,9 @@ function ClearQueueDialog({
             {groupName
               ? `Finaliza os ${count} atendimentos abertos de “${groupName}”.`
               : `Finaliza todos os ${count} atendimentos abertos de todos os grupos.`}{" "}
-            Eles ficam registrados como “Fila limpa pelo admin” e não contam como resolvidos.
+            Eles ficam registrados como “Fila limpa pelo admin” e não contam como resolvidos. Com o agente de IA configurado, cada um
+            é classificado antes (categoria e subcategoria) e finalizado quando a IA responde; o que não voltar em 15 minutos
+            é finalizado sem categoria.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
