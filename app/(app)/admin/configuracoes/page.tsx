@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app/page-header";
 import { SettingsForm } from "@/components/admin/settings-form";
 import { TaxonomySettings } from "@/components/admin/taxonomy-settings";
+import { ModerationSettings } from "@/components/admin/moderation-settings";
 import { AiSettings, type AiCallbackRow, type AiRequestRow } from "@/components/admin/ai-settings";
 import { aiConfigured } from "@/lib/ai/classify";
 import { siteUrl } from "@/lib/site-url";
@@ -35,6 +36,7 @@ export default async function ConfiguracoesPage() {
         reports={(reports ?? []) as IssuedReportRow[]}
       >
         <TaxonomySettings />
+        <ModerationSettings />
         <AiSettings configured={aiConfigured()} callbackUrl={callbackUrl} requests={(aiRequests ?? []) as unknown as AiRequestRow[]} callbacks={(aiCallbacks ?? []) as unknown as AiCallbackRow[]} />
       </SettingsForm>
     </>

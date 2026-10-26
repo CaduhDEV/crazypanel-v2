@@ -66,6 +66,11 @@ export interface AppSettings {
   ai_min_confidence: number;
   /** Minutos sem mensagem para o atendimento ir para a IA. */
   ai_idle_minutes: number;
+  /** Moderação: com esse número de flags o lead fica inapto. */
+  mod_strike_limit: number;
+  /** Privado ao advertir e ao tirar da comunidade. Vazio = não envia. */
+  mod_msg_warning: string;
+  mod_msg_removed: string;
 }
 
 export interface WaGroup {
@@ -115,7 +120,9 @@ export interface Contact {
   crm_checked_at?: string | null;
   kind: ContactKind;
   company_id: string | null;
+  /** Flags de moderação (advertências). Com o limite das Configurações, o lead fica inapto. */
   strikes: number;
+  removed_from_community_at?: string | null;
   notes: string | null;
   message_count: number;
   first_seen_at: string;
@@ -298,6 +305,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai_auto_close: true,
   ai_min_confidence: 0.7,
   ai_idle_minutes: 30,
+  mod_strike_limit: 3,
+  mod_msg_warning:
+    "Olá, {nome}. Você recebeu uma advertência na comunidade DataCrazy por não seguir as diretrizes do grupo. Motivo: {motivo}. Você está com {flags} de {limite} advertências; ao chegar no limite, sua participação na comunidade será suspensa.",
+  mod_msg_removed: "Olá, {nome}. Você foi removido(a) da comunidade DataCrazy por violar as diretrizes do grupo. Motivo: {motivo}.",
 };
 
 /**

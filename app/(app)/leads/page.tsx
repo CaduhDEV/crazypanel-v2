@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/app/page-header";
 import { LeadsView, type LeadRow } from "@/components/leads/leads-view";
 import { leadsQuery, parseLeadFilters } from "@/lib/leads/query";
+import { getSettings } from "@/lib/settings";
 import { GleapScanDialog } from "@/components/leads/gleap-scan-dialog";
 import { CrmScanDialog } from "@/components/leads/crm-scan-dialog";
 import { pluralize } from "@/lib/utils";
@@ -13,13 +14,14 @@ export const metadata: Metadata = { title: "Leads" };
 
 const PAGE_SIZE = 10;
 
-type SearchParams = Promise<{ q?: string; grupo?: string; vinculo?: string; pagina?: string }>;
+type SearchParams = Promise<{ q?: string; grupo?: string; vinculo?: string; flags?: string; pagina?: string }>;
 
 export default async function LeadsPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdminPage();
   const params = await searchParams;
-  const filters = parseLeadFilters(params);
-  const { q, group, link } = filters;
+  const settings = await getSettings();
+  const filters = parseLeadFilters(params, settings.mod_strike_limit);
+  const { q, group, link, flags } = filters;
   const page = Math.max(1, Number(params.pagina) || 1);
 
   const supabase = await createClient();
@@ -68,7 +70,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
         total={total}
         page={page}
         pageSize={PAGE_SIZE}
-        filters={{ q, group, link }}
+        filters={{ q, group, link, flags }}
+        flagLimit={settings.mod_strike_limit}
         groups={(groups.data ?? []) as { jid: string; name: string | null; listening: boolean }[]}
         stats={{
           linked: linked.count ?? 0,

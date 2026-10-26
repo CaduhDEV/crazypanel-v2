@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Building2, ChevronLeft, ChevronRight, Contact as ContactIcon, Handshake, Download, Loader2, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Building2, ChevronLeft, ChevronRight, Contact as ContactIcon, Handshake, Download, Flag, Loader2, Search, ShieldCheck } from "lucide-react";
 import { cn, contactLabel, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
 import type { Company, Contact } from "@/lib/types";
 import { needsCompany } from "@/lib/types";
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { LinkContactDialog, type LinkTarget } from "@/components/leads/link-contact-dialog";
 import { LeadProfileDialog } from "@/components/leads/lead-profile-dialog";
 
-import type { LinkFilter } from "@/lib/leads/query";
+import type { FlagFilter, LinkFilter } from "@/lib/leads/query";
 export type { LinkFilter };
 
 export type LeadRow = Pick<
@@ -24,6 +24,7 @@ export type LeadRow = Pick<
   | "name"
   | "phone"
   | "lid"
+  | "strikes"
   | "kind"
   | "company_id"
   | "message_count"
@@ -58,6 +59,7 @@ export function LeadsView({
   page,
   pageSize,
   filters,
+  flagLimit = 3,
   groups,
   stats,
   error,
@@ -66,7 +68,9 @@ export function LeadsView({
   total: number;
   page: number;
   pageSize: number;
-  filters: { q: string; group: string; link: LinkFilter };
+  filters: { q: string; group: string; link: LinkFilter; flags: FlagFilter };
+  /** Flags para o lead ficar inapto (vermelho). */
+  flagLimit?: number;
   groups: { jid: string; name: string | null; listening: boolean }[];
   stats: { linked: number; unlinked: number; partners: number; team: number };
   error: string | null;
@@ -101,7 +105,7 @@ export function LeadsView({
   const pages = Math.max(1, Math.ceil(total / pageSize));
   // Exportação: mesmos filtros da tela, sem a página.
   const exportParams = new URLSearchParams(
-    Object.entries({ q: filters.q, grupo: filters.group, vinculo: filters.link === "todos" ? "" : filters.link }).filter(([, v]) => v),
+    Object.entries({ q: filters.q, grupo: filters.group, vinculo: filters.link === "todos" ? "" : filters.link, flags: filters.flags }).filter(([, v]) => v),
   ).toString();
   const kpis = [
     { label: "Vinculados a empresa", value: stats.linked, icon: Building2, filter: "vinculados" as LinkFilter },
@@ -157,6 +161,17 @@ export function LeadsView({
             ))}
           </SelectContent>
         </Select>
+        <Select value={filters.flags || ALL} onValueChange={(v) => update({ flags: v === ALL ? null : v })}>
+          <SelectTrigger className="w-44" aria-label="Filtrar por flags">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Com ou sem flag</SelectItem>
+            <SelectItem value="com">Com flag</SelectItem>
+            <SelectItem value="sem">Sem flag</SelectItem>
+            <SelectItem value="inaptos">Inaptos ({flagLimit}+ flags)</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={filters.group || ALL} onValueChange={(v) => update({ grupo: v === ALL ? null : v })}>
           <SelectTrigger className="w-64" aria-label="Filtrar por grupo">
             <SelectValue />
@@ -201,8 +216,10 @@ export function LeadsView({
             {rows.map((r) => {
               const activeGroups = r.memberships.filter((m) => !m.left_at);
               const unlinked = needsCompany(r.kind) && !r.company_id;
+              const strikes = r.strikes ?? 0;
+              const inapto = strikes >= flagLimit;
               return (
-                <tr key={r.id} className="border-b border-border last:border-b-0 hover:bg-accent/30">
+                <tr key={r.id} className={cn("border-b border-border last:border-b-0", inapto ? "bg-destructive-soft/70 hover:bg-destructive-soft" : "hover:bg-accent/30")}>
                   <td className="px-4 py-2.5">
                     <span className="flex items-center gap-2.5">
                       <Avatar name={contactLabel(r)} src={r.avatar_url} size="sm" />
@@ -210,10 +227,19 @@ export function LeadsView({
                         <button
                           type="button"
                           onClick={() => setProfileId(r.id)}
-                          className="max-w-56 truncate text-left font-medium underline-offset-2 hover:text-primary hover:underline dark:hover:text-[#9fc0ef]"
+                          className={cn(
+                            "max-w-56 truncate text-left font-medium underline-offset-2 hover:underline",
+                            inapto ? "text-destructive" : "hover:text-primary dark:hover:text-[#9fc0ef]",
+                          )}
                         >
                           {contactLabel(r)}
                         </button>
+                        {strikes > 0 && (
+                          <span className={cn("flex items-center gap-1 text-[11px] font-medium", inapto ? "text-destructive" : "text-warning")} title={`${strikes} de ${flagLimit} flags`}>
+                            <Flag className={cn("size-3", inapto ? "fill-destructive" : "fill-warning")} />
+                            {inapto ? `Inapto · ${strikes}/${flagLimit} flags` : `${strikes}/${flagLimit} ${strikes === 1 ? "flag" : "flags"}`}
+                          </span>
+                        )}
                         {r.email && <span className="max-w-56 truncate text-xs text-muted-foreground">{r.email}</span>}
                       </span>
                     </span>
@@ -290,7 +316,7 @@ export function LeadsView({
             description={
               error
                 ? "Tente novamente em instantes."
-                : filters.q || filters.group || filters.link !== "todos"
+                : filters.q || filters.group || filters.flags || filters.link !== "todos"
                   ? "Ajuste a busca ou os filtros."
                   : "Os leads aparecem quando alguém fala num grupo escutado, ou ao sincronizar os membros em Grupos."
             }

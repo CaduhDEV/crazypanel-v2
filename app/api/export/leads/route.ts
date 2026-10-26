@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentProfile } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { leadsQuery, parseLeadFilters } from "@/lib/leads/query";
+import { getSettings } from "@/lib/settings";
 import { csvDate, csvResponse, toCsv } from "@/lib/csv";
 import { CONTACT_KIND_LABELS, type ContactKind } from "@/lib/types";
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
   if (profile.role !== "admin") return NextResponse.json({ error: "Apenas administradores." }, { status: 403 });
 
   const sp = request.nextUrl.searchParams;
-  const filters = parseLeadFilters({ q: sp.get("q"), grupo: sp.get("grupo"), vinculo: sp.get("vinculo") });
+  const filters = parseLeadFilters({ q: sp.get("q"), grupo: sp.get("grupo"), vinculo: sp.get("vinculo"), flags: sp.get("flags") }, (await getSettings()).mod_strike_limit);
   const supabase = await createClient();
 
   const { data: groups } = await supabase.from("wa_groups").select("jid, name");

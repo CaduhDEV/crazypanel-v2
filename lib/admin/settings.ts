@@ -19,9 +19,10 @@ const settingsSchema = z.object({
   pushNewTitle: z.string().trim().min(1, { error: "Informe o título do aviso de atendimento novo." }).max(120),
   pushNewBody: z.string().trim().min(1, { error: "Informe o texto do aviso de atendimento novo." }).max(300),
   pushBreachTitle: z.string().trim().min(1, { error: "Informe o título do aviso de SLA estourado." }).max(120),
-  joinMsgNoCompany: z.string().trim().min(1, { error: "Informe a mensagem de empresa não encontrada." }).max(1000),
-  joinMsgRejected: z.string().trim().min(1, { error: "Informe a mensagem de recusa." }).max(1000),
-  joinMsgAccepted: z.string().trim().min(1, { error: "Informe a mensagem de boas-vindas." }).max(1000),
+  // Vazia = mensagem desligada (não é enviada).
+  joinMsgNoCompany: z.string().trim().max(1000),
+  joinMsgRejected: z.string().trim().max(1000),
+  joinMsgAccepted: z.string().trim().max(1000),
   pushBreachBody: z.string().trim().min(1, { error: "Informe o texto do aviso de SLA estourado." }).max(300),
   memberReplyWindowMinutes: z.number().int().min(0).max(240),
   reportEnabled: z.boolean(),

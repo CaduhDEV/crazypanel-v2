@@ -6,17 +6,29 @@ import { KINDS_NEEDING_COMPANY } from "@/lib/types";
 export type LinkFilter = "todos" | "sem-vinculo" | "vinculados" | "varias-empresas" | "parceiros" | "equipe" | "ex-membros";
 export const LINK_FILTERS: LinkFilter[] = ["todos", "sem-vinculo", "vinculados", "varias-empresas", "parceiros", "equipe", "ex-membros"];
 
+/** Moderação: com flag, sem flag ou inaptos (no limite de flags). */
+export type FlagFilter = "" | "com" | "sem" | "inaptos";
+const FLAG_FILTERS: FlagFilter[] = ["com", "sem", "inaptos"];
+
 export interface LeadFilters {
   q: string;
   group: string;
   link: LinkFilter;
+  flags: FlagFilter;
+  /** Flags para ficar inapto (Configurações → Moderação). */
+  flagLimit: number;
 }
 
-export function parseLeadFilters(params: { q?: string | null; grupo?: string | null; vinculo?: string | null }): LeadFilters {
+export function parseLeadFilters(
+  params: { q?: string | null; grupo?: string | null; vinculo?: string | null; flags?: string | null },
+  flagLimit = 3,
+): LeadFilters {
   return {
     q: params.q?.trim().slice(0, 80) ?? "",
     group: params.grupo?.endsWith("@g.us") ? params.grupo : "",
     link: (LINK_FILTERS.includes(params.vinculo as LinkFilter) ? params.vinculo : "todos") as LinkFilter,
+    flags: (FLAG_FILTERS.includes(params.flags as FlagFilter) ? params.flags : "") as FlagFilter,
+    flagLimit,
   };
 }
 
@@ -38,6 +50,9 @@ export function leadsQuery(supabase: Supabase, f: LeadFilters, columns: string, 
   if (f.link === "equipe") query = query.eq("kind", "team");
   if (f.link === "ex-membros") query = query.not("left_community_at", "is", null);
   if (f.link === "varias-empresas") query = query.gt("companies_count", 1);
+  if (f.flags === "com") query = query.gt("strikes", 0);
+  if (f.flags === "sem") query = query.eq("strikes", 0);
+  if (f.flags === "inaptos") query = query.gte("strikes", f.flagLimit);
   if (f.q) {
     const term = f.q.replace(/[%,()]/g, " ");
     const digits = f.q.replace(/\D/g, "");

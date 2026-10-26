@@ -193,7 +193,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
             <Badge variant={activeGroups.length ? "primary" : "outline"}>{activeGroups.length ? "Na comunidade" : "Fora da comunidade"}</Badge>
             {c.left_community_at && <Badge variant="outline">Ex-membro desde {formatRelative(c.left_community_at)}</Badge>}
             {needsCompany(c.kind) && !c.company_id && <Badge variant="warning">Sem empresa vinculada</Badge>}
-            {c.strikes > 0 && <Badge variant="destructive">{pluralize(c.strikes, "advertência", "advertências")}</Badge>}
+            {c.strikes > 0 && <Badge variant="destructive">{pluralize(c.strikes, "flag", "flags")}</Badge>}
           </span>
         </div>
       </DialogHeader>

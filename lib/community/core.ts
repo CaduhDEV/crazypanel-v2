@@ -77,12 +77,25 @@ export function fillJoinMessage(template: string, vars: { nome?: string | null; 
     .replace(/\{email\}/g, vars.email?.trim() || "informado");
 }
 
-/** Mensagem no privado da pessoa; o resultado vai para o log. Nunca lança. */
-export async function sendPrivate(db: Admin, req: Pick<JoinRequestRow, "id" | "phone" | "contact_id" | "name">, text: string, kind: string) {
-  if (!req.phone) return;
+export type PrivateResult = "sent" | "disabled" | "no_phone" | "failed";
+
+/**
+ * Mensagem no privado da pessoa; o resultado vai para o log. Nunca lança.
+ * Texto vazio (template desligado nas Configurações): não envia nada.
+ */
+export async function sendPrivate(
+  db: Admin,
+  /** id da solicitação de entrada, quando houver (moderação manda sem). */
+  req: { id: string | null; phone: string | null; contact_id: string | null; name: string | null },
+  text: string,
+  kind: string,
+): Promise<PrivateResult> {
+  if (!text.trim()) return "disabled";
+  if (!req.phone) return "no_phone";
   try {
     await (await getUazapi()).sendText({ number: req.phone, text });
     await logCommunityEvent(db, { type: "pv_sent", request_id: req.id, contact_id: req.contact_id, phone: req.phone, name: req.name, data: { kind } });
+    return "sent";
   } catch (e) {
     await logCommunityEvent(db, {
       type: "pv_failed",
@@ -92,6 +105,7 @@ export async function sendPrivate(db: Admin, req: Pick<JoinRequestRow, "id" | "p
       name: req.name,
       data: { kind, error: e instanceof Error ? e.message : String(e) },
     });
+    return "failed";
   }
 }
 

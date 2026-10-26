@@ -16,6 +16,7 @@ import {
   MessagesSquare,
   Plug2,
   ScrollText,
+  ShieldAlert,
   Settings2,
   UserPlus,
   UsersRound,
@@ -54,6 +55,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: "/leads", label: "Leads", icon: Contact },
       { href: "/solicitacoes", label: "Solicitações", icon: DoorOpen, badge: "join-requests" },
+      { href: "/moderacao", label: "Moderação", icon: ShieldAlert },
       { href: "/empresas", label: "Empresas", icon: Building2 },
       { href: "/convites", label: "Prospectos", icon: UserPlus },
       { href: "/historico", label: "Histórico", icon: History },
