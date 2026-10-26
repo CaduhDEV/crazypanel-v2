@@ -12,6 +12,8 @@ export interface ReportSummary {
   ambos: number;
   declaradas: number;
   sem_resposta: number;
+  /** Off-topic (subcategoria ou "Assunto paralelo"): não pedia resposta, fica fora de "sem resposta". */
+  offtopic?: number;
   sem_resposta_2h: number;
   abertas_sem_resposta: number;
   com_tecnico: number;
@@ -69,7 +71,8 @@ export function indicators(s: ReportSummary) {
   return {
     comunidade: pct(s.comunidade, s.respondidas),
     comTecnico: pct(s.com_tecnico, s.threads),
-    semResposta: pct(s.sem_resposta, s.threads),
+    // Sobre os atendimentos que pediam resposta (sem os off-topic).
+    semResposta: pct(s.sem_resposta, s.threads - (s.offtopic ?? 0)),
     sla: pct(s.dentro_sla, s.com_tecnico),
     ruido: pct(s.ruido, s.threads),
     semCategoria: pct(s.sem_categoria, s.fechadas - s.limpas),
