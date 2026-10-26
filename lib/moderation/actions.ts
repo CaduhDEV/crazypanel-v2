@@ -8,83 +8,91 @@ import { ActionError, runAction, type ActionResult } from "@/lib/action";
 import { getSettings } from "@/lib/settings";
 import { getUazapi } from "@/lib/uazapi/instance";
 import { sendPrivate, type PrivateResult } from "@/lib/community/core";
+import { applyFlag, fillModeration, loadContact, logModeration, revertFlag } from "@/lib/moderation/core";
+import { dispatchModeration, moderationConfigured, type ModerationDispatch } from "@/lib/ai/moderate";
 
 // Moderação (admin): flags, advertência no privado e remoção da comunidade.
 // Com o limite de flags das Configurações (3), o lead fica inapto.
 
-type Db = ReturnType<typeof createAdminClient>;
-type ContactRow = { id: string; name: string | null; phone: string | null; lid: string | null; strikes: number };
-
 const reason = z.string().trim().max(500).optional();
-const contactSchema = z.object({ contactId: z.uuid(), reason });
-
-async function loadContact(db: Db, id: string): Promise<ContactRow> {
-  const { data } = await db.from("contacts").select("id, name, phone, lid, strikes").eq("id", id).maybeSingle<ContactRow>();
-  if (!data) throw new ActionError("Lead não encontrado.");
-  return data;
-}
-
-/** {nome}, {motivo}, {flags}, {limite}, {grupo}; sem valor vira texto neutro. */
-function fill(template: string, vars: { nome?: string | null; motivo?: string | null; flags?: number; limite?: number; grupo?: string | null }) {
-  return template
-    .replace(/\{nome\}/g, vars.nome?.trim() || "tudo bem")
-    .replace(/\{motivo\}/g, vars.motivo?.trim() || "não seguir as diretrizes da comunidade")
-    .replace(/\{flags\}/g, String(vars.flags ?? 0))
-    .replace(/\{limite\}/g, String(vars.limite ?? 3))
-    .replace(/\{grupo\}/g, vars.grupo?.trim() || "da comunidade");
-}
-
-async function log(
-  db: Db,
-  ev: { contact_id: string; type: "flag_added" | "flag_removed" | "removed" | "note"; reason?: string; strikes_after?: number; message?: PrivateResult; actor_id: string; data?: Record<string, unknown> },
-) {
-  const { error } = await db.from("moderation_events").insert({ ...ev, reason: ev.reason || null, data: ev.data ?? {} });
-  if (error) console.error("[moderação] log:", error.message);
-}
 
 function done() {
   revalidatePath("/moderacao");
   revalidatePath("/leads");
 }
 
-const flagSchema = z.object({ contactId: z.uuid(), reason, warn: z.boolean().default(true) });
+const flagSchema = z
+  .object({ contactId: z.uuid().optional(), messageId: z.uuid().optional(), reason, warn: z.boolean().default(true) })
+  .refine((v) => v.contactId || v.messageId, { error: "Informe o lead ou a mensagem." });
 
 /**
- * +1 flag. Com warn, manda a advertência no privado (se a mensagem estiver
- * configurada). Devolve as flags e se o lead ficou inapto.
+ * +1 flag, no lead ou numa mensagem dele. Com warn, manda a advertência no
+ * privado (se a mensagem estiver configurada). Devolve as flags e o limite.
  */
 export async function addFlag(input: z.input<typeof flagSchema>): Promise<ActionResult<{ strikes: number; limit: number; message: PrivateResult | null }>> {
-  return runAction(flagSchema, input, async ({ contactId, reason: why, warn }) => {
+  return runAction(flagSchema, input, async ({ contactId, messageId, reason: why, warn }) => {
     const admin = await requireAdmin();
     const db = createAdminClient();
-    const [contact, settings] = await Promise.all([loadContact(db, contactId), getSettings()]);
-    const { data: strikes, error } = await db.rpc("moderation_adjust_strikes", { p_contact_id: contactId, p_delta: 1 });
-    if (error) throw error;
-    const now = Number(strikes ?? contact.strikes + 1);
-
-    let message: PrivateResult | null = null;
-    if (warn) {
-      const text = fill(settings.mod_msg_warning, { nome: contact.name, motivo: why, flags: now, limite: settings.mod_strike_limit });
-      message = await sendPrivate(db, { id: null, phone: contact.phone, contact_id: contact.id, name: contact.name }, text, "moderation_warning");
+    let target = contactId;
+    if (messageId) {
+      const { data: msg } = await db.from("messages").select("id, contact_id, from_me, is_note").eq("id", messageId).maybeSingle();
+      if (!msg || msg.from_me || msg.is_note || !msg.contact_id) throw new ActionError("Essa mensagem não é de um lead.");
+      if (contactId && contactId !== msg.contact_id) throw new ActionError("A mensagem é de outro lead.");
+      target = msg.contact_id as string;
     }
-    await log(db, { contact_id: contactId, type: "flag_added", reason: why, strikes_after: now, message: message ?? undefined, actor_id: admin.id, data: { warn } });
+    const res = await applyFlag(db, { contactId: target!, messageId, reason: why, actorId: admin.id, warn });
+    if (!res.ok) {
+      if (res.error === "duplicate") throw new ActionError("Essa mensagem já tem flag.");
+      if (res.error === "not_found") throw new ActionError("Lead não encontrado.");
+      throw new ActionError("Não foi possível dar a flag.");
+    }
     done();
-    return { strikes: now, limit: settings.mod_strike_limit, message };
+    return { strikes: res.strikes, limit: res.limit, message: res.message };
   });
 }
 
-/** -1 flag (nunca abaixo de 0). */
-export async function removeFlag(input: z.input<typeof contactSchema>): Promise<ActionResult<{ strikes: number }>> {
-  return runAction(contactSchema, input, async ({ contactId, reason: why }) => {
+const unflagSchema = z.object({ contactId: z.uuid(), eventId: z.number().int().positive().optional(), reason });
+
+/** -1 flag: desfaz a flag indicada (ou a mais recente). Nunca abaixo de 0. */
+export async function removeFlag(input: z.input<typeof unflagSchema>): Promise<ActionResult<{ strikes: number }>> {
+  return runAction(unflagSchema, input, async ({ contactId, eventId, reason: why }) => {
     const admin = await requireAdmin();
-    const db = createAdminClient();
-    const contact = await loadContact(db, contactId);
-    if (contact.strikes <= 0) throw new ActionError("Este lead não tem flags.");
-    const { data: strikes, error } = await db.rpc("moderation_adjust_strikes", { p_contact_id: contactId, p_delta: -1 });
-    if (error) throw error;
-    await log(db, { contact_id: contactId, type: "flag_removed", reason: why, strikes_after: Number(strikes ?? 0), actor_id: admin.id });
+    const res = await revertFlag(createAdminClient(), { contactId, eventId, reason: why, actorId: admin.id });
+    if ("error" in res) throw new ActionError(res.error);
     done();
-    return { strikes: Number(strikes ?? 0) };
+    return res;
+  });
+}
+
+export interface LeadFlag {
+  id: number;
+  created_at: string;
+  reason: string | null;
+  rule: string | null;
+  by_ai: boolean;
+  confidence: number | null;
+  strikes_after: number | null;
+  reverted_at: string | null;
+  actor: { name: string } | null;
+  reverter: { name: string } | null;
+  msg: { id: string; body: string | null; kind: string; sent_at: string; ticket_id: string | null; deleted_at: string | null; group: { name: string | null } | null } | null;
+}
+
+/** Flags do lead (ativas e retiradas), com a mensagem marcada. */
+export async function listLeadFlags(input: { contactId: string }): Promise<ActionResult<LeadFlag[]>> {
+  return runAction(z.object({ contactId: z.uuid() }), input, async ({ contactId }) => {
+    await requireAdmin();
+    const { data, error } = await createAdminClient()
+      .from("moderation_events")
+      .select(
+        "id, created_at, reason, rule, by_ai, confidence, strikes_after, reverted_at, actor:profiles!moderation_events_actor_id_fkey(name), reverter:profiles!moderation_events_reverted_by_fkey(name), msg:messages(id, body, kind, sent_at, ticket_id, deleted_at, group:wa_groups(name))",
+      )
+      .eq("contact_id", contactId)
+      .eq("type", "flag_added")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    return (data ?? []) as unknown as LeadFlag[];
   });
 }
 
@@ -96,7 +104,8 @@ export async function addModerationNote(input: z.input<typeof noteSchema>): Prom
     const admin = await requireAdmin();
     const db = createAdminClient();
     const contact = await loadContact(db, contactId);
-    await log(db, { contact_id: contactId, type: "note", reason: why, strikes_after: contact.strikes, actor_id: admin.id });
+    if (!contact) throw new ActionError("Lead não encontrado.");
+    await logModeration(db, { contact_id: contactId, type: "note", reason: why, strikes_after: contact.strikes, actor_id: admin.id });
     done();
   });
 }
@@ -118,6 +127,7 @@ export async function removeFromCommunity(input: z.input<typeof removeSchema>): 
     const admin = await requireAdmin();
     const db = createAdminClient();
     const [contact, settings] = await Promise.all([loadContact(db, contactId), getSettings()]);
+    if (!contact) throw new ActionError("Lead não encontrado.");
     const who = contact.phone ?? (contact.lid ? `${contact.lid}@lid` : null);
     if (!who) throw new ActionError("Este lead não tem telefone nem identificador do WhatsApp.");
 
@@ -131,7 +141,7 @@ export async function removeFromCommunity(input: z.input<typeof removeSchema>): 
     // Avisa antes de remover (depois ele não está mais no grupo, mas o privado funciona igual).
     let message: PrivateResult | null = null;
     if (notify) {
-      const text = fill(settings.mod_msg_removed, { nome: contact.name, motivo: why, flags: contact.strikes, limite: settings.mod_strike_limit, grupo: groups.map((g) => g.group?.name).filter(Boolean).join(", ") });
+      const text = fillModeration(settings.mod_msg_removed, { nome: contact.name, motivo: why, flags: contact.strikes, limite: settings.mod_strike_limit, grupo: groups.map((g) => g.group?.name).filter(Boolean).join(", ") });
       message = await sendPrivate(db, { id: null, phone: contact.phone, contact_id: contact.id, name: contact.name }, text, "moderation_removed");
     }
 
@@ -156,7 +166,7 @@ export async function removeFromCommunity(input: z.input<typeof removeSchema>): 
     if (result.removed.length || !groups.length) {
       await db.from("contacts").update({ removed_from_community_at: now, left_community_at: now }).eq("id", contactId);
     }
-    await log(db, { contact_id: contactId, type: "removed", reason: why, strikes_after: contact.strikes, message: message ?? undefined, actor_id: admin.id, data: { removed: result.removed, failed: result.failed } });
+    await logModeration(db, { contact_id: contactId, type: "removed", reason: why, strikes_after: contact.strikes, message: message ?? undefined, actor_id: admin.id, data: { removed: result.removed, failed: result.failed } });
     done();
     return result;
   });
@@ -167,19 +177,42 @@ const settingsSchema = z.object({
   // Vazia = mensagem desligada (não é enviada).
   warning: z.string().trim().max(1000),
   removed: z.string().trim().max(1000),
+  rules: z.string().trim().max(3000),
+  aiEnabled: z.boolean(),
+  aiMinConfidence: z.number().min(0).max(1),
+  aiWarn: z.boolean(),
 });
 
 export async function updateModerationSettings(input: z.input<typeof settingsSchema>): Promise<ActionResult<void>> {
-  return runAction(settingsSchema, input, async ({ limit, warning, removed }) => {
+  return runAction(settingsSchema, input, async ({ limit, warning, removed, rules, aiEnabled, aiMinConfidence, aiWarn }) => {
+    if (aiEnabled && !rules) throw new ActionError("Escreva as regras da comunidade antes de ligar a moderação por IA.");
     const admin = await requireAdmin();
     const { error } = await createAdminClient()
       .from("app_settings")
-      .update({ mod_strike_limit: limit, mod_msg_warning: warning, mod_msg_removed: removed, updated_by: admin.id })
+      .update({
+        mod_strike_limit: limit,
+        mod_msg_warning: warning,
+        mod_msg_removed: removed,
+        community_rules: rules,
+        ai_moderation_enabled: aiEnabled,
+        ai_moderation_min_confidence: aiMinConfidence,
+        ai_moderation_warn: aiWarn,
+        updated_by: admin.id,
+      })
       .eq("id", 1);
     if (error) {
-      if (/mod_/.test(error.message)) throw new ActionError("Rode as migrations novas (npx supabase db push) antes de salvar.");
+      if (/mod_|community_rules|ai_moderation/.test(error.message)) throw new ActionError("Rode as migrations novas (npx supabase db push) antes de salvar.");
       throw error;
     }
     revalidatePath("/", "layout");
+  });
+}
+
+/** Configurações → Moderação: manda agora as mensagens novas para a IA (sem esperar a rotina). */
+export async function runAiModerationNow(): Promise<ActionResult<ModerationDispatch>> {
+  return runAction(z.object({}), {}, async () => {
+    await requireAdmin();
+    if (!moderationConfigured()) throw new ActionError("Falta configurar AI_MODERATION_WEBHOOK_URL nas variáveis do painel.");
+    return dispatchModeration();
   });
 }

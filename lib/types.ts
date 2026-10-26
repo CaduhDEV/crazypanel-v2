@@ -71,6 +71,14 @@ export interface AppSettings {
   /** Privado ao advertir e ao tirar da comunidade. Vazio = não envia. */
   mod_msg_warning: string;
   mod_msg_removed: string;
+  /** Regras da comunidade, uma por linha (vão para a IA de moderação). */
+  community_rules: string;
+  /** A IA lê as mensagens novas e dá flag no que viola as regras. */
+  ai_moderation_enabled: boolean;
+  /** 0 a 1: abaixo disso a IA não dá flag. */
+  ai_moderation_min_confidence: number;
+  /** Mandar a advertência no privado quando a IA dá flag. */
+  ai_moderation_warn: boolean;
 }
 
 export interface WaGroup {
@@ -200,6 +208,8 @@ export interface Message {
   error: string | null;
   edited_at: string | null;
   deleted_at: string | null;
+  /** Mensagem com flag de moderação (dada pela equipe ou pela IA). */
+  flagged_at?: string | null;
   sent_at: string;
   created_at: string;
 }
@@ -309,6 +319,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mod_msg_warning:
     "Olá, {nome}. Você recebeu uma advertência na comunidade DataCrazy por não seguir as diretrizes do grupo. Motivo: {motivo}. Você está com {flags} de {limite} advertências; ao chegar no limite, sua participação na comunidade será suspensa.",
   mod_msg_removed: "Olá, {nome}. Você foi removido(a) da comunidade DataCrazy por violar as diretrizes do grupo. Motivo: {motivo}.",
+  community_rules:
+    "Anúncios de qualquer espécie sem aprovação\nCompra ou venda de BM\nOferta ou procura de serviços de disparos\nToxicidade, preconceito, xingamentos e ofensas",
+  ai_moderation_enabled: false,
+  ai_moderation_min_confidence: 0.8,
+  ai_moderation_warn: false,
 };
 
 /**

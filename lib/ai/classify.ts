@@ -108,16 +108,21 @@ async function buildPayload(db: Admin, ticket: TicketRow, requestId: string, tax
   };
 }
 
-async function postToAgent(body: string): Promise<{ ok: boolean; error?: string }> {
+/** POST assinado para um webhook de agente (classificação ou moderação). */
+export async function signedPost(url: string, body: string): Promise<Response> {
   const signature = createHmac("sha256", process.env.AI_WEBHOOK_SECRET!).update(body).digest("hex");
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CrazyPanel-Signature": `sha256=${signature}` },
+    body,
+    cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
+  });
+}
+
+async function postToAgent(body: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(process.env.AI_AGENT_WEBHOOK_URL!, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CrazyPanel-Signature": `sha256=${signature}` },
-      body,
-      cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
-    });
+    const res = await signedPost(process.env.AI_AGENT_WEBHOOK_URL!, body);
     if (!res.ok) return { ok: false, error: `agente respondeu ${res.status}` };
     // Se o agente já devolver o resultado na mesma resposta, processa na hora.
     const text = await res.text().catch(() => "");
@@ -296,8 +301,11 @@ export type ApplyOutcome =
   | { ok: true; ticket_id: string; outcome: "closed" | "suggested"; reason?: string }
   | { ok: false; request_id?: string; ticket_id?: string; error: string };
 
-/** O agente pode mandar JSON puro, o JSON dentro de um campo de texto ou texto com o JSON no meio. */
-export function extractResults(raw: unknown): unknown[] {
+/**
+ * O agente pode mandar JSON puro, o JSON dentro de um campo de texto ou texto
+ * com o JSON no meio. Devolve os objetos que passam em match, onde estiverem.
+ */
+export function findObjects(raw: unknown, match: (o: Record<string, unknown>) => boolean): Record<string, unknown>[] {
   const parse = (v: unknown): unknown => {
     if (typeof v !== "string") return v;
     const s = v.trim();
@@ -316,17 +324,20 @@ export function extractResults(raw: unknown): unknown[] {
       return null;
     }
   };
-  const visit = (v: unknown, depth = 0): unknown[] => {
+  const visit = (v: unknown, depth = 0): Record<string, unknown>[] => {
     const value = parse(v);
-    if (!value || typeof value !== "object" || depth > 3) return [];
+    if (!value || typeof value !== "object" || depth > 4) return [];
     if (Array.isArray(value)) return value.flatMap((x) => visit(x, depth + 1));
     const o = value as Record<string, unknown>;
-    if (Array.isArray(o.results)) return o.results.flatMap((x) => visit(x, depth + 1));
-    if ("category" in o && ("request_id" in o || "ticket_id" in o)) return [o];
+    if (match(o)) return [o];
     // Envelope do agente: { output: "…json…" }, { data: {…} }, { message: "…" }…
     return Object.values(o).flatMap((x) => (typeof x === "string" || (x && typeof x === "object") ? visit(x, depth + 1) : []));
   };
   return visit(raw);
+}
+
+export function extractResults(raw: unknown): unknown[] {
+  return findObjects(raw, (o) => "category" in o && ("request_id" in o || "ticket_id" in o));
 }
 
 const RESOLVED = new Set(["community", "team", "both"]);

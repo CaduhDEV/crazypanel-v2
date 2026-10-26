@@ -28,7 +28,7 @@ export default async function ModeracaoPage({ searchParams }: { searchParams: Se
         .limit(20)
     : null;
 
-  const [settings, flagged, events, found] = await Promise.all([
+  const [settings, flagged, events, found, aiFlags] = await Promise.all([
     getSettings(),
     db
       .from("contacts")
@@ -39,10 +39,14 @@ export default async function ModeracaoPage({ searchParams }: { searchParams: Se
       .limit(300),
     db
       .from("moderation_events")
-      .select("id, contact_id, type, reason, strikes_after, message, created_at, actor:profiles(name), contact:contacts(name, phone)")
+      .select(
+        "id, contact_id, type, reason, rule, by_ai, reverted_at, strikes_after, message, created_at, actor:profiles!moderation_events_actor_id_fkey(name), contact:contacts(name, phone), msg:messages(body, kind)",
+      )
       .order("created_at", { ascending: false })
       .limit(40),
     search,
+    // Leads com flag ativa dada pela IA ("Moderado por IA").
+    db.from("moderation_events").select("contact_id").eq("type", "flag_added").eq("by_ai", true).is("reverted_at", null).limit(2000),
   ]);
 
   return (
@@ -57,6 +61,7 @@ export default async function ModeracaoPage({ searchParams }: { searchParams: Se
         events={(events.data ?? []) as unknown as ModerationEvent[]}
         query={q}
         found={(found?.data ?? []) as unknown as ModerationLead[]}
+        aiFlagged={[...new Set(((aiFlags.data ?? []) as { contact_id: string }[]).map((r) => r.contact_id))]}
         error={flagged.error?.message ?? null}
       />
     </>

@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app/page-header";
 import { SettingsForm } from "@/components/admin/settings-form";
 import { TaxonomySettings } from "@/components/admin/taxonomy-settings";
-import { ModerationSettings } from "@/components/admin/moderation-settings";
+import { ModerationSettings, type AiModerationRequestRow } from "@/components/admin/moderation-settings";
+import { moderationConfigured } from "@/lib/ai/moderate";
 import { AiSettings, type AiCallbackRow, type AiRequestRow } from "@/components/admin/ai-settings";
 import { aiConfigured } from "@/lib/ai/classify";
 import { siteUrl } from "@/lib/site-url";
@@ -16,7 +17,7 @@ export const metadata: Metadata = { title: "Configurações" };
 export default async function ConfiguracoesPage() {
   await requireAdminPage();
   const db = createAdminClient();
-  const [settings, { data: people }, { data: reports }, { data: aiRequests }, base, { data: aiCallbacks }] = await Promise.all([
+  const [settings, { data: people }, { data: reports }, { data: aiRequests }, base, { data: aiCallbacks }, { data: modRequests }] = await Promise.all([
     getSettings(),
     // "*": whatsapp pode não existir antes da migration.
     db.from("profiles").select("*").eq("active", true).order("name"),
@@ -25,6 +26,7 @@ export default async function ConfiguracoesPage() {
     db.from("ai_classification_requests").select("id, status, outcome, sent_at, error, ticket:tickets(number)").order("sent_at", { ascending: false }).limit(8),
     siteUrl(),
     db.from("webhook_events").select("id, received_at, payload").eq("event_type", "ai_callback").order("id", { ascending: false }).limit(5),
+    db.from("ai_moderation_requests").select("id, status, sent_at, message_ids, flagged, error").order("sent_at", { ascending: false }).limit(6),
   ]);
   const callbackUrl = `${base}/api/ai/classificacoes?key=${encodeURIComponent(process.env.AI_WEBHOOK_SECRET ?? "")}`;
   return (
@@ -36,7 +38,11 @@ export default async function ConfiguracoesPage() {
         reports={(reports ?? []) as IssuedReportRow[]}
       >
         <TaxonomySettings />
-        <ModerationSettings />
+        <ModerationSettings
+          configured={moderationConfigured()}
+          callbackUrl={`${base}/api/ai/moderacao?key=${encodeURIComponent(process.env.AI_WEBHOOK_SECRET ?? "")}`}
+          requests={(modRequests ?? []) as AiModerationRequestRow[]}
+        />
         <AiSettings configured={aiConfigured()} callbackUrl={callbackUrl} requests={(aiRequests ?? []) as unknown as AiRequestRow[]} callbacks={(aiCallbacks ?? []) as unknown as AiCallbackRow[]} />
       </SettingsForm>
     </>

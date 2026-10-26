@@ -7,6 +7,7 @@ import {
   CheckCheck,
   Clock3,
   CornerUpLeft,
+  Flag,
   Loader2,
   Pencil,
   RotateCw,
@@ -16,12 +17,13 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { addFlag } from "@/lib/moderation/actions";
 import { confirmMessageContext, deleteMessage, editMessage, moveMessageToNewTicket, reactToMessage, retryMessage } from "@/lib/tickets/actions";
 import { cn, formatTime, nameColor } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/input";
-import { Tip } from "@/components/ui/misc";
+import { Label, Textarea } from "@/components/ui/input";
+import { Switch, Tip } from "@/components/ui/misc";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useApp } from "@/components/app/app-context";
@@ -112,6 +114,11 @@ export const MessageItem = memo(function MessageItem({
             )}
 
             <span className={cn("flex items-center gap-1 self-end text-[10.5px] text-muted-foreground", message.is_note && "text-note-foreground/70")}>
+              {message.flagged_at && (
+                <Tip label="Mensagem com flag de moderação">
+                  <Flag className="size-3 fill-destructive text-destructive" aria-label="Mensagem com flag" />
+                </Tip>
+              )}
               {message.edited_at && !deleted && <span>editada ·</span>}
               {formatTime(message.sent_at)}
               {mine && <StatusIcon message={message} />}
@@ -124,6 +131,7 @@ export const MessageItem = memo(function MessageItem({
               mine={teamSide}
               canChange={(mine || message.is_note) && (message.author_id === profile.id || isAdmin)}
               canSplit={!message.from_me && !message.is_note && !!message.contact_id}
+              canFlag={isAdmin && !teamSide && !message.is_note && !!message.contact_id && !message.flagged_at}
               onReply={() => onReply(message)}
               onSplit={onSplit}
             />
@@ -265,6 +273,7 @@ function MessageActions({
   mine,
   canChange,
   canSplit,
+  canFlag,
   onReply,
   onSplit,
 }: {
@@ -272,11 +281,13 @@ function MessageActions({
   mine: boolean;
   canChange: boolean;
   canSplit: boolean;
+  canFlag: boolean;
   onReply: () => void;
   onSplit: (newTicketId: string) => void;
 }) {
   const [reactOpen, setReactOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [flagOpen, setFlagOpen] = useState(false);
   const [pending, start] = useTransition();
   const canReact = !!message.wa_id && !message.is_note;
   const canReply = !!message.wa_id || message.is_note;
@@ -353,6 +364,13 @@ function MessageActions({
           </Button>
         </Tip>
       )}
+      {canFlag && (
+        <Tip label="Dar flag (viola as regras)">
+          <Button variant="ghost" size="icon-xs" onClick={() => setFlagOpen(true)} aria-label="Dar flag" className="hover:text-destructive">
+            <Flag />
+          </Button>
+        </Tip>
+      )}
       {canChange && message.kind === "text" && (
         <Tip label="Editar">
           <Button variant="ghost" size="icon-xs" onClick={() => setEditOpen(true)} aria-label="Editar">
@@ -375,7 +393,50 @@ function MessageActions({
         </Tip>
       )}
       {editOpen && <EditDialog message={message} onClose={() => setEditOpen(false)} />}
+      {flagOpen && <FlagDialog message={message} onClose={() => setFlagOpen(false)} />}
     </div>
+  );
+}
+
+/** Flag de moderação nesta mensagem: +1 flag no lead, com a mensagem marcada. */
+function FlagDialog({ message, onClose }: { message: Message; onClose: () => void }) {
+  const [reason, setReason] = useState("");
+  const [warn, setWarn] = useState(true);
+  const [pending, start] = useTransition();
+  const save = () =>
+    start(async () => {
+      const res = await addFlag({ messageId: message.id, reason: reason.trim() || undefined, warn });
+      if (!res.ok) return void toast.error(res.error);
+      const { strikes, limit } = res.data;
+      toast.success(`Flag dada: ${strikes}/${limit}${strikes >= limit ? " (inapto)" : ""}.`);
+      onClose();
+    });
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Dar flag nesta mensagem</DialogTitle>
+        </DialogHeader>
+        <p className="line-clamp-4 rounded-md border border-border bg-muted/50 px-3 py-2 text-[13px]">{stripFormatting(messageSnippet(message))}</p>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="flag-reason">Motivo</Label>
+          <Textarea id="flag-reason" rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: anúncio sem aprovação." autoFocus />
+          <p className="text-xs text-muted-foreground">Fica na Moderação, com esta mensagem. Na advertência, entra como {"{motivo}"}.</p>
+        </div>
+        <label className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-[13px]">
+          Mandar a advertência no privado
+          <Switch checked={warn} onCheckedChange={setWarn} />
+        </label>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={save} disabled={pending}>
+            {pending && <Loader2 className="animate-spin" />} Dar flag
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

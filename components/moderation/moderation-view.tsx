@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Flag, FlagOff, Loader2, MessageSquareWarning, Search, ShieldAlert, StickyNote, UserX } from "lucide-react";
+import { Bot, ExternalLink, Flag, FlagOff, Loader2, MessageSquareWarning, Search, ShieldAlert, StickyNote, UserX } from "lucide-react";
 import { toast } from "sonner";
-import { addFlag, addModerationNote, removeFlag, removeFromCommunity } from "@/lib/moderation/actions";
+import { addFlag, addModerationNote, listLeadFlags, removeFlag, removeFromCommunity, type LeadFlag } from "@/lib/moderation/actions";
 import type { PrivateResult } from "@/lib/community/core";
-import { cn, contactLabel, formatPhone, formatRelative } from "@/lib/utils";
+import { cn, contactLabel, formatDayLabel, formatPhone, formatRelative, formatTime } from "@/lib/utils";
 import type { ContactKind } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { Input, Label, Textarea } from "@/components/ui/input";
 import { EmptyState, Switch, Tip } from "@/components/ui/misc";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LeadProfileDialog } from "@/components/leads/lead-profile-dialog";
+import { OpenTicketLink } from "@/components/conversation/open-ticket-link";
 
 export interface ModerationLead {
   id: string;
@@ -34,11 +35,16 @@ export interface ModerationEvent {
   contact_id: string;
   type: "flag_added" | "flag_removed" | "removed" | "note";
   reason: string | null;
+  rule: string | null;
+  by_ai: boolean;
+  reverted_at: string | null;
   strikes_after: number | null;
   message: PrivateResult | null;
   created_at: string;
   actor: { name: string } | null;
   contact: { name: string | null; phone: string | null } | null;
+  /** Mensagem marcada pela flag. */
+  msg: { body: string | null; kind: string } | null;
 }
 
 type ActionKind = "warn" | "flag" | "unflag" | "remove" | "note";
@@ -51,7 +57,11 @@ const ACTIONS: Record<ActionKind, { title: string; description: string; confirm:
     notify: "Mandar a advertência no privado",
   },
   flag: { title: "Adicionar 1 flag", description: "Soma 1 flag sem avisar a pessoa.", confirm: "Adicionar flag" },
-  unflag: { title: "Retirar 1 flag", description: "Tira 1 flag (por exemplo, advertência dada por engano).", confirm: "Retirar flag" },
+  unflag: {
+    title: "Retirar 1 flag",
+    description: "Desfaz a flag mais recente (por exemplo, dada por engano). Para escolher qual, clique nas bandeiras do lead.",
+    confirm: "Retirar flag",
+  },
   remove: {
     title: "Tirar da comunidade",
     description: "Remove o lead de todos os grupos da comunidade em que ele está. O número do painel precisa ser admin de cada grupo.",
@@ -74,6 +84,7 @@ export function ModerationView({
   events,
   query,
   found,
+  aiFlagged,
   error,
 }: {
   limit: number;
@@ -81,12 +92,16 @@ export function ModerationView({
   events: ModerationEvent[];
   query: string;
   found: ModerationLead[];
+  /** Leads com flag ativa dada pela IA. */
+  aiFlagged: string[];
   error: string | null;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState(query);
   const [action, setAction] = useState<{ kind: ActionKind; lead: ModerationLead } | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [flagsOf, setFlagsOf] = useState<{ id: string; name: string } | null>(null);
+  const byAi = new Set(aiFlagged);
   const flaggedIds = new Set(leads.map((l) => l.id));
   const inaptos = leads.filter((l) => l.strikes >= limit).length;
 
@@ -158,10 +173,14 @@ export function ModerationView({
                     return (
                       <tr key={l.id} className={cn("border-b border-border last:border-b-0", inapto ? "bg-destructive-soft/60" : "hover:bg-accent/30")}>
                         <td className="px-4 py-2.5">
-                          <LeadCell lead={l} limit={limit} onOpen={() => setProfileId(l.id)} />
+                          <LeadCell lead={l} limit={limit} byAi={byAi.has(l.id)} onOpen={() => setProfileId(l.id)} />
                         </td>
                         <td className="px-4 py-2.5">
-                          <FlagMeter strikes={l.strikes} limit={limit} />
+                          <Tip label="Ver as flags e as mensagens marcadas">
+                            <button type="button" onClick={() => setFlagsOf({ id: l.id, name: contactLabel(l) })} className="rounded-md px-1 py-0.5 hover:bg-accent" aria-label="Ver flags">
+                              <FlagMeter strikes={l.strikes} limit={limit} />
+                            </button>
+                          </Tip>
                         </td>
                         <td className="px-4 py-2.5 text-xs text-muted-foreground">
                           {l.removed_from_community_at ? (
@@ -220,12 +239,27 @@ export function ModerationView({
                     <span className="truncate font-medium">{e.contact?.name ?? formatPhone(e.contact?.phone) ?? "Lead"}</span>
                     <span className="shrink-0 text-muted-foreground">{formatRelative(e.created_at)}</span>
                   </span>
-                  <span className={cn(e.type === "removed" ? "text-destructive" : e.type === "flag_removed" ? "text-success" : "text-foreground/85")}>
-                    {e.type === "flag_added" ? `+1 flag (${e.strikes_after}/${limit})` : e.type === "flag_removed" ? `-1 flag (${e.strikes_after}/${limit})` : e.type === "removed" ? "Tirado da comunidade" : "Anotação"}
-                    {e.actor ? ` · ${e.actor.name}` : ""}
+                  <span
+                    className={cn(
+                      e.type === "removed" ? "text-destructive" : e.type === "flag_removed" ? "text-success" : "text-foreground/85",
+                      e.reverted_at && "line-through opacity-70",
+                    )}
+                  >
+                    {e.type === "flag_added" ? `+1 flag (${e.strikes_after ?? "?"}/${limit})` : e.type === "flag_removed" ? `-1 flag (${e.strikes_after}/${limit})` : e.type === "removed" ? "Tirado da comunidade" : "Anotação"}
+                    {e.by_ai ? " · Moderado por IA" : e.actor ? ` · ${e.actor.name}` : ""}
                     {e.message ? ` · ${MESSAGE_TEXT[e.message]}` : ""}
                   </span>
+                  {e.rule && <span className="text-muted-foreground">Regra: {e.rule}</span>}
                   {e.reason && <span className="text-muted-foreground">{e.reason}</span>}
+                  {e.msg?.body && (
+                    <button
+                      type="button"
+                      onClick={() => setFlagsOf({ id: e.contact_id, name: e.contact?.name ?? (formatPhone(e.contact?.phone) || "Lead") })}
+                      className="mt-0.5 line-clamp-2 rounded border-l-2 border-destructive/60 bg-muted/60 px-2 py-1 text-left italic text-foreground/80 hover:bg-muted"
+                    >
+                      “{e.msg.body}”
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -237,11 +271,12 @@ export function ModerationView({
 
       {action && <ActionDialog kind={action.kind} lead={action.lead} limit={limit} onClose={() => setAction(null)} onDone={() => router.refresh()} />}
       <LeadProfileDialog contactId={profileId} onClose={() => setProfileId(null)} />
+      {flagsOf && <FlagsDialog lead={flagsOf} limit={limit} onClose={() => setFlagsOf(null)} onChanged={() => router.refresh()} />}
     </main>
   );
 }
 
-function LeadCell({ lead, limit, onOpen }: { lead: ModerationLead; limit: number; onOpen: () => void }) {
+function LeadCell({ lead, limit, byAi, onOpen }: { lead: ModerationLead; limit: number; byAi?: boolean; onOpen: () => void }) {
   const inapto = lead.strikes >= limit;
   return (
     <span className="flex min-w-0 items-center gap-2.5">
@@ -252,6 +287,7 @@ function LeadCell({ lead, limit, onOpen }: { lead: ModerationLead; limit: number
             {contactLabel(lead)}
           </button>
           {inapto && <Badge variant="destructive">Inapto</Badge>}
+          {byAi && <AiBadge />}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {[formatPhone(lead.phone), lead.company?.name].filter(Boolean).join(" · ") || "Sem telefone"}
@@ -273,6 +309,105 @@ export function FlagMeter({ strikes, limit }: { strikes: number; limit: number }
         {strikes}/{limit}
       </span>
     </span>
+  );
+}
+
+function AiBadge() {
+  return (
+    <Badge variant="outline" className="gap-1 border-primary/30 text-primary">
+      <Bot className="size-3" /> Moderado por IA
+    </Badge>
+  );
+}
+
+const when = (d: string) => `${formatDayLabel(d)} ${formatTime(d)}`;
+
+/** Flags do lead com a mensagem marcada em cada uma; dá para retirar uma específica. */
+function FlagsDialog({ lead, limit, onClose, onChanged }: { lead: { id: string; name: string }; limit: number; onClose: () => void; onChanged: () => void }) {
+  const [flags, setFlags] = useState<LeadFlag[] | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [, start] = useTransition();
+
+  useEffect(() => {
+    let alive = true;
+    listLeadFlags({ contactId: lead.id }).then((res) => {
+      if (!alive) return;
+      if (!res.ok) return void toast.error(res.error);
+      setFlags(res.data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lead.id]);
+
+  const revert = (f: LeadFlag) => {
+    setBusy(f.id);
+    start(async () => {
+      const res = await removeFlag({ contactId: lead.id, eventId: f.id, reason: f.by_ai ? "IA errou" : undefined });
+      setBusy(null);
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(`Flag retirada: ${res.data.strikes}/${limit}.`);
+      setFlags((list) => list?.map((x) => (x.id === f.id ? { ...x, reverted_at: new Date().toISOString() } : x)) ?? null);
+      onChanged();
+    });
+  };
+
+  const ordered = flags ? [...flags.filter((f) => !f.reverted_at), ...flags.filter((f) => f.reverted_at)] : [];
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Flags · {lead.name}</DialogTitle>
+          <DialogDescription>Cada flag com a mensagem que foi marcada. Se a flag estiver errada, retire.</DialogDescription>
+        </DialogHeader>
+        {!flags ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : !flags.length ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma flag registrada (as do sistema antigo não têm mensagem).</p>
+        ) : (
+          <div className="scroll-thin flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
+            {ordered.map((f) => (
+              <div key={f.id} className={cn("flex flex-col gap-1.5 rounded-md border border-border p-3 text-xs", f.reverted_at && "opacity-60")}>
+                <div className="flex flex-wrap items-center gap-2">
+                  {f.by_ai ? <AiBadge /> : <Badge variant="outline">{f.actor?.name ?? "Equipe"}</Badge>}
+                  <span className="text-muted-foreground">{when(f.created_at)}</span>
+                  {f.by_ai && f.confidence != null && <span className="text-muted-foreground">· {Math.round(Number(f.confidence) * 100)}% de certeza</span>}
+                  {f.reverted_at ? (
+                    <span className="ml-auto text-success">Retirada{f.reverter ? ` por ${f.reverter.name}` : ""}</span>
+                  ) : (
+                    <Button size="sm" variant="outline" className="ml-auto" onClick={() => revert(f)} disabled={busy !== null}>
+                      {busy === f.id ? <Loader2 className="animate-spin" /> : <FlagOff />} Retirar flag
+                    </Button>
+                  )}
+                </div>
+                {f.rule && <span className="font-medium">Regra: {f.rule}</span>}
+                {f.reason && <span className="text-muted-foreground">{f.reason}</span>}
+                {f.msg ? (
+                  <div className="flex flex-col gap-1 rounded border-l-2 border-destructive/60 bg-muted/60 px-2.5 py-1.5">
+                    <span className="whitespace-pre-wrap break-words text-[13px] text-foreground/90">
+                      {f.msg.deleted_at ? <em className="text-muted-foreground">Mensagem apagada</em> : f.msg.body || <em className="text-muted-foreground">[{f.msg.kind}]</em>}
+                    </span>
+                    <span className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                      {f.msg.group?.name ?? "Grupo"} · {when(f.msg.sent_at)}
+                      {f.msg.ticket_id && (
+                        <OpenTicketLink ticketId={f.msg.ticket_id} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
+                          <ExternalLink className="size-3" /> Abrir atendimento
+                        </OpenTicketLink>
+                      )}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="italic text-muted-foreground">Flag dada no lead, sem mensagem marcada.</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
