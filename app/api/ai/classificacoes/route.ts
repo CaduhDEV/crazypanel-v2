@@ -50,6 +50,12 @@ export async function POST(request: NextRequest) {
   if (/x-www-form-urlencoded/i.test(contentType) || (!raw.trim().startsWith("{") && !raw.trim().startsWith("[") && /^[\w.%-]+=/.test(raw.trim()))) {
     body = Object.fromEntries(new URLSearchParams(raw));
   }
+  // Sem corpo: os campos podem vir na própria URL (?request_id=…&category=…&topic=…).
+  if (!raw.trim()) {
+    const params = Object.fromEntries(request.nextUrl.searchParams);
+    delete params.key;
+    body = params;
+  }
 
   try {
     const results = await handleAgentResult(body);
