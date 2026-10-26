@@ -129,7 +129,7 @@ export function ModerationSettings({ configured, callbackUrl, requests }: { conf
               <Bot className="size-4 text-primary" /> Moderação por IA
             </h3>
             <p className="max-w-2xl text-xs text-muted-foreground">
-              A cada 2 minutos, as mensagens novas dos leads vão para o agente de moderação do CRM. Cada violação vira uma flag na mensagem,
+              As mensagens dos leads vão para o agente de moderação do CRM assim que chegam. Cada violação vira uma flag na mensagem,
               marcada como &ldquo;Moderado por IA&rdquo;; se a IA errar, retire a flag na Moderação.
             </p>
           </div>

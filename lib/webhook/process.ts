@@ -9,6 +9,7 @@ import { copyRemoteToStorage, mediaPath } from "@/lib/media";
 import { refreshContactAvatar } from "@/lib/avatars";
 import { getSettings } from "@/lib/settings";
 import { dispatchConnectionAlerts } from "@/lib/alerts/discord";
+import { dispatchModeration, moderationConfigured } from "@/lib/ai/moderate";
 import type { MessageStatus } from "@/lib/types";
 
 type Payload = Record<string, unknown>;
@@ -78,10 +79,14 @@ async function handleMessage(db: Admin, payload: Payload) {
   if (m.edited) {
     const { data: edited } = await db
       .from("messages")
-      .update({ body: m.body, edited_at: new Date().toISOString() })
+      .update({ body: m.body, edited_at: new Date().toISOString(), ai_moderated_at: null })
       .eq("wa_id", m.waId)
       .select("id");
-    if (edited?.length) return;
+    if (edited?.length) {
+      // Texto novo: a IA lê de novo.
+      if (!m.fromMe) await moderateNow();
+      return;
+    }
   }
 
   if (!m.body && !m.hasMedia) return; // mensagem de sistema sem conteúdo
@@ -120,6 +125,21 @@ async function handleMessage(db: Admin, payload: Payload) {
   }
   if (!m.fromMe && !ingested.duplicate && !m.quotedWaId) {
     await flagUncertainContext(db, ingested, m.sentAt);
+  }
+  if (!m.fromMe && !ingested.duplicate && m.body?.trim()) await moderateNow();
+}
+
+/**
+ * Moderação por IA na chegada da mensagem (já roda em segundo plano, depois
+ * de responder à uazapi). Manda junto o que estiver pendente; a rotina de
+ * 10 em 10 min só reenvia o que falhou.
+ */
+async function moderateNow() {
+  try {
+    if (!moderationConfigured() || !(await getSettings()).ai_moderation_enabled) return;
+    await dispatchModeration();
+  } catch (e) {
+    console.error("[moderação] envio para a IA:", e);
   }
 }
 
