@@ -6,6 +6,8 @@ import { TicketNotifier } from "@/components/app/notifier";
 import { PushPermissionPrompt } from "@/components/app/browser-notifications";
 import { useTicketsRealtime } from "@/components/app/use-open-tickets";
 import { MobileNav, Sidebar } from "@/components/app/sidebar";
+import { TicketModalHost } from "@/components/conversation/ticket-modal-host";
+import { Suspense } from "react";
 import type { AppSettings, Profile } from "@/lib/types";
 import type { Taxonomy } from "@/lib/taxonomy";
 
@@ -42,6 +44,10 @@ export function AppShell({
             {children}
           </div>
         </div>
+        {/* Conversa aberta por ?ticket= em qualquer página (o Inbox monta a dele). */}
+        <Suspense>
+          <TicketModalHost />
+        </Suspense>
       </PresenceProvider>
     </AppProvider>
   );

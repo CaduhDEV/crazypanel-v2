@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Copy, Loader2, MessageSquareText, RefreshCw, Trash2, Users } from "lucide-react";
@@ -20,6 +19,7 @@ import { useApp } from "@/components/app/app-context";
 import { useNow } from "@/components/app/use-now";
 import { CompanyChoices } from "@/components/leads/company-choices";
 import { gleapStatusLabel, gleapBoardLabel, type ContactGleapTicket } from "@/components/app/use-gleap-tickets";
+import { OpenTicketLink } from "@/components/conversation/open-ticket-link";
 
 type ProfileContact = Contact & {
   phone_key: string | null;
@@ -320,7 +320,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
               const category = classificationLabel(taxonomy, t.category, t.topic);
               return (
                 <li key={t.id}>
-                  <Link href={`/atendimento?ticket=${t.id}`} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs hover:bg-accent/40">
+                  <OpenTicketLink ticketId={t.id} className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs hover:bg-accent/40">
                     <span className="flex items-center justify-between gap-2 text-muted-foreground">
                       <span className="truncate">
                         #{t.number} · {t.group?.name ?? "Grupo"} · {formatRelative(t.opened_at)}
@@ -334,7 +334,7 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
                       {t.role === "participant" ? "Participou · " : ""}
                       {assignee ? `com ${assignee}` : "sem responsável"} · {pluralize(t.message_count, "mensagem", "mensagens")}
                     </span>
-                  </Link>
+                  </OpenTicketLink>
                 </li>
               );
             })}

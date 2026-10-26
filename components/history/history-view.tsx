@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, ExternalLink, History, Loader2, Search, X } from "lucide-react";
@@ -19,6 +18,7 @@ import { useApp } from "@/components/app/app-context";
 import { ExportPdfButton } from "@/components/history/export-pdf";
 import { LeadsSummary, TranscriptView, transcriptSummary } from "@/components/history/transcript-view";
 import { useTranscript } from "@/components/history/use-transcript";
+import { OpenTicketLink } from "@/components/conversation/open-ticket-link";
 
 export interface HistoryRow {
   id: string;
@@ -300,9 +300,9 @@ function TranscriptDialogBody({ ticketId }: { ticketId: string }) {
           </div>
           <div className="flex shrink-0 gap-2">
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/atendimento?ticket=${ticketId}`}>
-                <ExternalLink /> Abrir no Inbox
-              </Link>
+              <OpenTicketLink ticketId={ticketId}>
+                <ExternalLink /> Abrir atendimento
+              </OpenTicketLink>
             </Button>
             <ExportPdfButton transcript={data} />
           </div>

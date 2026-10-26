@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
 import { useApp } from "@/components/app/app-context";
 import { useOpenTickets } from "@/components/app/use-open-tickets";
 import { slaInfo, type SlaState } from "@/lib/sla";
@@ -79,14 +78,12 @@ export function TicketNotifier() {
   const { data: tickets } = useOpenTickets();
   const [userSound] = useSoundEnabled();
   const enabled = userSound && settings.push_sound;
-  const router = useRouter();
   const openTicket = useCallback(
     (id: string) => {
-      // Já no Inbox: abre a conversa sem recarregar a página.
-      if (window.location.pathname === "/atendimento") setTicketParam(id, "push");
-      else router.push(`/atendimento?ticket=${id}`);
+      // Abre a conversa por cima da página atual (qualquer tela do painel).
+      setTicketParam(id, "push");
     },
-    [router],
+    [],
   );
   const known = useRef<Set<string> | null>(null);
   const phases = useRef(new Map<string, SlaState>());

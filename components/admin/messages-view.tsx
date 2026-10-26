@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -39,6 +38,7 @@ import { useApp, type Member } from "@/components/app/app-context";
 import { FormattedText } from "@/components/conversation/formatted-text";
 import { MessageMedia } from "@/components/conversation/message-media";
 import { messageSnippet } from "@/components/conversation/message-utils";
+import { OpenTicketLink } from "@/components/conversation/open-ticket-link";
 
 export interface MessageRow extends Pick<
   Message,
@@ -433,9 +433,9 @@ function MessageContext({ initial }: { initial: MessageRow }) {
           {current.legacy_id && <Badge variant="outline">Sistema antigo</Badge>}
           {current.ticket_id && (
             <Button variant="ghost" size="sm" className="ml-auto h-7" asChild>
-              <Link href={`/atendimento?ticket=${current.ticket_id}`}>
+              <OpenTicketLink ticketId={current.ticket_id}>
                 <ExternalLink /> Abrir atendimento
-              </Link>
+              </OpenTicketLink>
             </Button>
           )}
         </div>

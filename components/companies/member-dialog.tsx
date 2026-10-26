@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/misc";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { gleapStatusLabel, gleapBoardLabel, type ContactGleapTicket } from "@/components/app/use-gleap-tickets";
+import { OpenTicketLink } from "@/components/conversation/open-ticket-link";
 
 /** Pessoa com acesso a uma empresa: usuário do Gleap e/ou lead dos grupos. */
 export interface Member {
@@ -175,8 +176,8 @@ function MemberDetails({ member }: { member: Member }) {
               <ul className="col-span-2 flex flex-col gap-1.5">
                 {data.tickets.map((t) => (
                   <li key={t.id}>
-                    <Link
-                      href={`/atendimento?ticket=${t.id}`}
+                    <OpenTicketLink
+                      ticketId={t.id}
                       className="flex flex-col gap-0.5 rounded-md border border-border p-2 text-xs hover:bg-accent/40"
                     >
                       <span className="flex justify-between gap-2 text-muted-foreground">
@@ -186,7 +187,7 @@ function MemberDetails({ member }: { member: Member }) {
                         <span>{t.status === "open" ? "Aberto" : "Finalizado"}</span>
                       </span>
                       <span className="line-clamp-2">{t.subject}</span>
-                    </Link>
+                    </OpenTicketLink>
                   </li>
                 ))}
               </ul>
