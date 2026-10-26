@@ -308,7 +308,7 @@ export function ChatPanel({
         ticketId={ticket.id}
         ticketNumber={ticket.number}
         ownerId={ticket.contact_id}
-        suggestion={ticket.ai_classified_at ? { category: ticket.ai_category ?? null, topic: ticket.ai_topic ?? null, resolvedBy: ticket.ai_resolved_by ?? null, summary: ticket.ai_summary ?? null } : null}
+        suggestion={ticket.ai_classified_at ? { category: ticket.ai_category ?? null, topic: ticket.ai_topic ?? null, resolvedBy: ticket.ai_resolved_by ?? null, summary: ticket.ai_summary ?? null, resolutionMessageId: ticket.ai_resolution_message_id ?? null } : null}
         mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
     </div>
   );

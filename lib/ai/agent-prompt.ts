@@ -10,7 +10,7 @@ Um webhook (JSON) com UM atendimento:
 - callback_url: endereço para onde você devolve o resultado.
 - ticket: número, grupo, data de abertura e assunto do atendimento.
 - taxonomy: a lista de categorias permitidas. Cada categoria tem "category" (a chave) e "topics" (as subcategorias, com "key").
-- messages: a conversa, em ordem. Cada mensagem tem "role":
+- messages: a conversa, em ordem. Cada mensagem tem um "id" e um "role":
   - "lead": a pessoa que abriu o atendimento (ou que participa dele);
   - "comunidade": outro membro do grupo;
   - "equipe": alguém da DataCrazy.
@@ -25,11 +25,11 @@ Um webhook (JSON) com UM atendimento:
    - false: a dúvida foi respondida (pela comunidade ou pela equipe) e o lead não ficou esperando; ou a conversa não pedia resposta (papo, agradecimento, divulgação).
    - true: a pergunta ficou sem resposta, a resposta foi incompleta, o lead voltou a perguntar, é um erro ou bug, envolve conta, pagamento ou dado pessoal, ou você não tem certeza.
    - Na dúvida, use true. Um atendimento com needs_team false pode ser encerrado sem ninguém revisar.
-3. resolved_by: quem resolveu a dúvida.
-   - "community": outro membro respondeu e resolveu;
-   - "team": alguém da equipe resolveu;
-   - "both": os dois ajudaram;
-   - null: não houve dúvida para resolver (papo, divulgação) ou ninguém resolveu.
+3. resolution_message_id e resolved_by: a mensagem que resolveu a dúvida e quem a escreveu.
+   - resolution_message_id: o "id" da mensagem (de "messages") que respondeu e resolveu o que o lead perguntou. Escolha a resposta que de fato resolveu, não a do lead agradecendo ("deu certo", "obrigado"); esse agradecimento é só o sinal de que a mensagem anterior resolveu. Nunca escolha uma mensagem do próprio lead.
+   - resolved_by: "community" se essa mensagem é de outro membro, "team" se é da equipe, "both" se a solução veio das duas partes (aponte a mensagem principal).
+   - Sempre que needs_team for false e havia uma dúvida, preencha os dois.
+   - null nos dois quando não houve dúvida para resolver (papo, divulgação, elogio) ou quando ninguém resolveu.
 4. summary: uma frase curta em português, até 200 caracteres, dizendo o que o lead queria e como terminou. Sem nomes completos, telefones ou e-mails.
 5. confidence: de 0 a 1, o quanto você tem certeza da classificação e do needs_team. Use menos de 0.7 quando a conversa for curta, confusa ou depender de mídia que você não vê.
 
@@ -41,6 +41,7 @@ Envie um POST para o callback_url com este JSON, e somente ele (sem texto antes 
   "category": "<chave da categoria>",
   "topic": "<chave da subcategoria>",
   "resolved_by": "community" | "team" | "both" | null,
+  "resolution_message_id": "<id da mensagem que resolveu>" | null,
   "needs_team": true | false,
   "summary": "<frase curta>",
   "confidence": 0.0

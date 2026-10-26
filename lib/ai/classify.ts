@@ -48,6 +48,7 @@ type TicketRow = {
 };
 
 type MessageRow = {
+  id: string;
   sent_at: string;
   body: string | null;
   kind: string;
@@ -71,7 +72,7 @@ async function buildPayload(db: Admin, ticket: TicketRow, requestId: string, tax
   const [{ data: rows }, { data: participants }] = await Promise.all([
     db
       .from("messages")
-      .select("sent_at, body, kind, from_me, author_id, contact_id, sender_name, contact:contacts!contact_id(name, kind)")
+      .select("id, sent_at, body, kind, from_me, author_id, contact_id, sender_name, contact:contacts!contact_id(name, kind)")
       .eq("ticket_id", ticket.id)
       .eq("is_note", false)
       .is("deleted_at", null)
@@ -88,7 +89,7 @@ async function buildPayload(db: Admin, ticket: TicketRow, requestId: string, tax
       const role = team ? "equipe" : m.contact_id && leads.has(m.contact_id) ? "lead" : "comunidade";
       const media = m.kind !== "text" ? `[${KIND_LABEL[m.kind] ?? "mídia"}] ` : "";
       const text = `${media}${(m.body ?? "").trim()}`.trim().slice(0, MAX_TEXT);
-      return { at: m.sent_at, role, name: m.contact?.name ?? m.sender_name ?? null, text };
+      return { id: m.id, at: m.sent_at, role, name: m.contact?.name ?? m.sender_name ?? null, text };
     })
     .filter((m) => m.text);
 
@@ -224,6 +225,8 @@ export interface AgentResult {
   needs_team: boolean;
   summary: string | null;
   confidence: number;
+  /** Mensagem (id do envio) que resolveu a dúvida. */
+  resolution_message_id: string | null;
 }
 
 export type ApplyOutcome =
@@ -289,6 +292,7 @@ function normalize(item: unknown, taxonomy: Taxonomy): AgentResult | string {
     needs_team: needs === false || needs === "false" || needs === "nao" || needs === "não" ? false : true,
     summary: str(o.summary).slice(0, 600) || null,
     confidence: Math.min(1, Math.max(0, confidence)),
+    resolution_message_id: /^[0-9a-f-]{36}$/i.test(str(o.resolution_message_id)) ? str(o.resolution_message_id) : null,
   };
 }
 
@@ -307,10 +311,25 @@ async function applyOne(db: Admin, r: AgentResult, settings: AppSettings): Promi
     .maybeSingle();
   if (!ticket) return { ok: false, ticket_id: ticketId, error: "atendimento não encontrado" };
 
+  // A mensagem que resolveu tem de ser deste atendimento e não do próprio lead.
+  // Sem quem resolveu, deduz pela pessoa que escreveu a mensagem.
+  if (r.resolution_message_id) {
+    const { data: msg } = await db
+      .from("messages")
+      .select("id, from_me, author_id, contact_id, contact:contacts!contact_id(kind)")
+      .eq("id", r.resolution_message_id)
+      .eq("ticket_id", ticketId)
+      .maybeSingle<{ id: string; from_me: boolean; author_id: string | null; contact_id: string | null; contact: { kind: string } | null }>();
+    const { data: owner } = await db.from("tickets").select("contact_id").eq("id", ticketId).maybeSingle();
+    if (!msg || (msg.contact_id && msg.contact_id === owner?.contact_id)) r.resolution_message_id = null;
+    else if (!r.resolved_by) r.resolved_by = msg.from_me || msg.author_id || msg.contact?.kind === "team" ? "team" : "community";
+  }
+
   const now = new Date().toISOString();
   await db
     .from("tickets")
     .update({
+      ai_resolution_message_id: r.resolution_message_id,
       ai_category: r.category,
       ai_topic: r.topic,
       ai_resolved_by: r.resolved_by,
@@ -347,6 +366,7 @@ async function applyOne(db: Admin, r: AgentResult, settings: AppSettings): Promi
         category: r.category,
         topic: r.topic,
         resolved_by: parallel ? null : r.resolved_by,
+        resolution_message_id: parallel ? null : r.resolution_message_id,
         close_note: r.summary ? `Encerrado pela IA: ${r.summary}` : "Encerrado pela IA",
         waiting_since: null,
       })

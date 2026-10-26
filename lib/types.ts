@@ -155,6 +155,8 @@ export interface Ticket {
   ai_summary?: string | null;
   ai_confidence?: number | null;
   ai_classified_at?: string | null;
+  /** Mensagem que resolveu, segundo a IA. */
+  ai_resolution_message_id?: string | null;
   closed_by_ai?: boolean;
 }
 

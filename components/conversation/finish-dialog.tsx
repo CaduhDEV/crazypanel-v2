@@ -70,7 +70,7 @@ export function FinishDialog({
   /** Autor da dúvida: as respostas são as mensagens dos outros. */
   ownerId: string;
   /** Sugestão do agente de IA: o diálogo já abre com ela. */
-  suggestion?: { category: string | null; topic: string | null; resolvedBy: ResolvedBy | null; summary: string | null } | null;
+  suggestion?: { category: string | null; topic: string | null; resolvedBy: ResolvedBy | null; summary: string | null; resolutionMessageId?: string | null } | null;
   mode: "resolved" | "parallel" | null;
   onClose: () => void;
   onFinished: () => void;
@@ -94,6 +94,7 @@ export function FinishDialog({
       setCategory((c) => c ?? ai.category);
       setTopic((t) => t ?? ai.topic);
       if (mode === "resolved" && ai.resolvedBy) setResolvedBy((r) => r ?? ai.resolvedBy);
+      if (mode === "resolved" && ai.resolutionMessageId) setResolution((m) => m ?? ai.resolutionMessageId ?? null);
     } else if (mode === "parallel" && isActivePair(taxonomy, "comunidade", "offtopic")) {
       setCategory((c) => c ?? "comunidade");
       setTopic((t) => t ?? "offtopic");
