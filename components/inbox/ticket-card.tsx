@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, MessagesSquare } from "lucide-react";
+import { Clock, MessagesSquare, Sparkles } from "lucide-react";
 import { cn, contactLabel, formatRelative, pluralize } from "@/lib/utils";
 import type { TicketWithRelations } from "@/lib/types";
 import { needsCompany } from "@/lib/types";
@@ -20,6 +20,8 @@ export function TicketCard({ ticket, onOpen }: { ticket: TicketWithRelations; on
   const assignee = ticket.assignee_id ? memberById.get(ticket.assignee_id) : null;
   const name = contactLabel(ticket.contact);
   const unlinked = needsCompany(ticket.contact?.kind) && !ticket.contact?.company_id;
+  // Resumo da IA só enquanto vale: classificado depois da última mensagem.
+  const aiFresh = !!ticket.ai_summary && !!ticket.ai_classified_at && Date.parse(ticket.ai_classified_at) >= Date.parse(ticket.last_message_at);
   const { data: gleapByContact } = useGleapTicketsByContact();
   const gleap = gleapByContact?.get(ticket.contact_id) ?? [];
 
@@ -64,6 +66,15 @@ export function TicketCard({ ticket, onOpen }: { ticket: TicketWithRelations; on
       <p className="line-clamp-3 min-h-[3.75rem] text-[13px] leading-5 text-muted-foreground group-hover:text-foreground/85">
         “{ticket.subject ?? ticket.last_message_preview ?? "Sem conteúdo"}”
       </p>
+      {aiFresh && (
+        <p className="-mt-1 flex items-start gap-1.5 rounded-md bg-primary-soft/60 px-2 py-1 text-[11.5px] leading-4 text-foreground/85" title={ticket.ai_summary ?? undefined}>
+          <Sparkles className="mt-px size-3 shrink-0 text-primary" />
+          <span className="line-clamp-2">
+            {ticket.ai_needs_team ? "Precisa da equipe · " : ""}
+            {ticket.ai_summary}
+          </span>
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
         <span className="flex min-w-0 items-center gap-1.5">

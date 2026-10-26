@@ -299,7 +299,12 @@ export function ChatPanel({
         </div>
       )}
 
-      <FinishDialog ticketId={ticket.id} ticketNumber={ticket.number} ownerId={ticket.contact_id} mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
+      <FinishDialog
+        ticketId={ticket.id}
+        ticketNumber={ticket.number}
+        ownerId={ticket.contact_id}
+        suggestion={ticket.ai_classified_at ? { category: ticket.ai_category ?? null, topic: ticket.ai_topic ?? null, resolvedBy: ticket.ai_resolved_by ?? null, summary: ticket.ai_summary ?? null } : null}
+        mode={finishMode} onClose={() => setFinishMode(null)} onFinished={() => { setFinishMode(null); onFinished(); }} />
     </div>
   );
 }
@@ -356,7 +361,11 @@ function EventLine({
     case "closed": {
       const reason = (data.reason as keyof typeof CLOSE_REASONS) ?? "resolved";
       const category = classificationLabel(taxonomy, data.category as string | null, data.topic as string | null);
-      text = reason === "resolved" ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}` : `${CLOSE_REASONS[reason]}${actor ? ` · ${actor}` : ""}`;
+      text = data.ai
+        ? `Encerrado pela IA${category ? ` · ${category}` : ""}`
+        : reason === "resolved"
+          ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}`
+          : `${CLOSE_REASONS[reason]}${actor ? ` · ${actor}` : ""}`;
       break;
     }
     case "message_moved":

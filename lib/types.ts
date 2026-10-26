@@ -59,6 +59,13 @@ export interface AppSettings {
   report_period_days: number;
   report_recipients: string[];
   report_last_sent_at: string | null;
+  /** Agente de IA do CRM: classifica os atendimentos parados (e encerra, se ligado). */
+  ai_enabled: boolean;
+  ai_auto_close: boolean;
+  /** 0 a 1: abaixo disso a IA só sugere, não encerra. */
+  ai_min_confidence: number;
+  /** Minutos sem mensagem para o atendimento ir para a IA. */
+  ai_idle_minutes: number;
 }
 
 export interface WaGroup {
@@ -140,6 +147,15 @@ export interface Ticket {
   closed_at: string | null;
   closed_by: string | null;
   opened_at: string;
+  /** Sugestão do agente de IA (o Finalizar abre com ela). */
+  ai_category?: string | null;
+  ai_topic?: string | null;
+  ai_resolved_by?: ResolvedBy | null;
+  ai_needs_team?: boolean | null;
+  ai_summary?: string | null;
+  ai_confidence?: number | null;
+  ai_classified_at?: string | null;
+  closed_by_ai?: boolean;
 }
 
 /** Atendimento com os dados usados na fila e na lista da conversa. */
@@ -276,6 +292,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   report_period_days: 7,
   report_recipients: [],
   report_last_sent_at: null,
+  ai_enabled: false,
+  ai_auto_close: true,
+  ai_min_confidence: 0.7,
+  ai_idle_minutes: 30,
 };
 
 /**

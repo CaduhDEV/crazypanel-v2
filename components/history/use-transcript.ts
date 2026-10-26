@@ -141,6 +141,7 @@ export function eventText(e: TicketEvent, t: Transcript, memberById: Map<string,
     case "closed": {
       const reason = (d.reason as keyof typeof CLOSE_REASONS) ?? "resolved";
       const category = categoryLabel(t, d.category as string | null, d.topic as string | null);
+      if (d.ai) return `Encerrado pela IA${category ? ` · ${category}` : ""}`;
       return reason === "resolved" ? `Finalizado por ${actor ?? "alguém"}${category ? ` · ${category}` : ""}` : CLOSE_REASONS[reason];
     }
     case "message_moved":

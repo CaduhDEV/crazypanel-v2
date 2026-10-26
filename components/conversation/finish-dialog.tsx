@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, Plus, X } from "lucide-react";
+import { Check, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { closeTicket } from "@/lib/tickets/actions";
 import { createCategory, createTopic } from "@/lib/admin/taxonomy";
@@ -60,6 +60,7 @@ export function FinishDialog({
   ticketId,
   ticketNumber,
   ownerId,
+  suggestion,
   mode,
   onClose,
   onFinished,
@@ -68,6 +69,8 @@ export function FinishDialog({
   ticketNumber: number;
   /** Autor da dúvida: as respostas são as mensagens dos outros. */
   ownerId: string;
+  /** Sugestão do agente de IA: o diálogo já abre com ela. */
+  suggestion?: { category: string | null; topic: string | null; resolvedBy: ResolvedBy | null; summary: string | null } | null;
   mode: "resolved" | "parallel" | null;
   onClose: () => void;
   onFinished: () => void;
@@ -86,7 +89,12 @@ export function FinishDialog({
   const [openedAs, setOpenedAs] = useState(mode);
   if (mode !== openedAs) {
     setOpenedAs(mode);
-    if (mode === "parallel" && isActivePair(taxonomy, "comunidade", "offtopic")) {
+    const ai = suggestion?.category && suggestion.topic && isActivePair(taxonomy, suggestion.category, suggestion.topic) ? suggestion : null;
+    if (mode && ai) {
+      setCategory((c) => c ?? ai.category);
+      setTopic((t) => t ?? ai.topic);
+      if (mode === "resolved" && ai.resolvedBy) setResolvedBy((r) => r ?? ai.resolvedBy);
+    } else if (mode === "parallel" && isActivePair(taxonomy, "comunidade", "offtopic")) {
       setCategory((c) => c ?? "comunidade");
       setTopic((t) => t ?? "offtopic");
     }
@@ -156,6 +164,15 @@ export function FinishDialog({
               : "Esses dados alimentam as métricas e o relatório das comunidades."}
           </DialogDescription>
         </DialogHeader>
+
+        {suggestion?.summary && (
+          <p className="flex gap-2 rounded-md border border-primary/20 bg-primary-soft/50 px-3 py-2 text-[12.5px] text-foreground">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <span>
+              <span className="font-medium">Sugestão da IA:</span> {suggestion.summary}
+            </span>
+          </p>
+        )}
 
         <Choices
           legend="Categoria"

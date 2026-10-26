@@ -5,6 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app/page-header";
 import { SettingsForm } from "@/components/admin/settings-form";
 import { TaxonomySettings } from "@/components/admin/taxonomy-settings";
+import { AiSettings, type AiRequestRow } from "@/components/admin/ai-settings";
+import { aiConfigured } from "@/lib/ai/classify";
+import { siteUrl } from "@/lib/site-url";
 import type { IssuedReportRow, ReportPerson } from "@/components/admin/report-settings";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -12,12 +15,16 @@ export const metadata: Metadata = { title: "Configurações" };
 export default async function ConfiguracoesPage() {
   await requireAdminPage();
   const db = createAdminClient();
-  const [settings, { data: people }, { data: reports }] = await Promise.all([
+  const [settings, { data: people }, { data: reports }, { data: aiRequests }, base] = await Promise.all([
     getSettings(),
     // "*": whatsapp pode não existir antes da migration.
     db.from("profiles").select("*").eq("active", true).order("name"),
     db.from("reports").select("id, created_at, trigger, deliveries").order("created_at", { ascending: false }).limit(5),
+    // Antes da migration a tabela não existe: lista vazia.
+    db.from("ai_classification_requests").select("id, status, outcome, sent_at, error, ticket:tickets(number)").order("sent_at", { ascending: false }).limit(8),
+    siteUrl(),
   ]);
+  const callbackUrl = `${base}/api/ai/classificacoes?key=${encodeURIComponent(process.env.AI_WEBHOOK_SECRET ?? "")}`;
   return (
     <>
       <PageHeader title="Configurações" description="Regras do atendimento, iguais para toda a equipe." />
@@ -27,6 +34,7 @@ export default async function ConfiguracoesPage() {
         reports={(reports ?? []) as IssuedReportRow[]}
       >
         <TaxonomySettings />
+        <AiSettings configured={aiConfigured()} callbackUrl={callbackUrl} requests={(aiRequests ?? []) as unknown as AiRequestRow[]} />
       </SettingsForm>
     </>
   );
