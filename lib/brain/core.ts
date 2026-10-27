@@ -19,13 +19,13 @@ type Admin = ReturnType<typeof createAdminClient>;
 const PER_BATCH = 15;
 const MAX_MESSAGES = 30;
 const MAX_TEXT = 900;
-const MAX_EXISTING = 30;
+const MAX_EXISTING = 15;
 /** Resposta dos itens existentes no envio (o agente só precisa reconhecer o item). */
-const EXISTING_ANSWER = 400;
-/** Tamanho dos atendimentos num envio: o webhook do DC recusa corpos grandes (413). */
-const TICKETS_BUDGET = 45_000;
+const EXISTING_ANSWER = 250;
+/** Tamanho dos atendimentos num envio: o webhook do DC recusa corpos grandes (413 com 60 KB). */
+const TICKETS_BUDGET = 18_000;
 /** Um atendimento sozinho não passa disso: conversas longas são cortadas no meio. */
-const TICKET_BUDGET = 12_000;
+const TICKET_BUDGET = 8_000;
 /** Lote sem retorno há mais que isso: volta para a fila. */
 const STALE_MS = 10 * 60 * 1000;
 /** Categorias sem conhecimento reaproveitável (papo, elogio…). */
