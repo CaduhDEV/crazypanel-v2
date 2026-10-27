@@ -28,10 +28,12 @@ const objectUrl = (base: string, key: string) => `${base}/${key.split("/").map(e
 
 export async function r2Put(key: string, body: ArrayBuffer | Uint8Array | Buffer, contentType: string): Promise<void> {
   const { client, base } = config();
+  // O R2 exige Content-Length; na Vercel um Buffer pode sair sem ele (411).
+  const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   const res = await client.fetch(objectUrl(base, key), {
     method: "PUT",
-    body: body as BodyInit,
-    headers: { "Content-Type": contentType },
+    body: bytes as BodyInit,
+    headers: { "Content-Type": contentType, "Content-Length": String(bytes.byteLength) },
   });
   if (!res.ok) throw new Error(`upload no R2 falhou (${res.status}): ${(await res.text()).slice(0, 200)}`);
 }

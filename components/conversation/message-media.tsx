@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Download, FileText, ImageOff, Loader2, MapPin, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -102,11 +102,12 @@ function ImageMedia({ message }: { message: Message }) {
 
 /** A uazapi guarda o arquivo por 2 dias: até lá, abrir a mensagem já tenta de novo. */
 const AUTO_RETRY_MS = 47 * 60 * 60 * 1000;
+/** Uma tentativa automática por mensagem nesta aba (a tela remonta a cada atualização). */
+const autoRetried = new Set<string>();
 
 function FailedMedia({ message }: { message: Message }) {
   const queryClient = useQueryClient();
   const [pending, start] = useTransition();
-  const autoTried = useRef(false);
   const retry = (silent = false) =>
     start(async () => {
       const res = await retryMediaDownload({ messageId: message.id });
@@ -118,9 +119,9 @@ function FailedMedia({ message }: { message: Message }) {
     });
 
   useEffect(() => {
-    if (autoTried.current || message.from_me || !message.wa_id) return;
+    if (autoRetried.has(message.id) || message.from_me || !message.wa_id) return;
     if (Date.now() - Date.parse(message.sent_at) > AUTO_RETRY_MS) return;
-    autoTried.current = true;
+    autoRetried.add(message.id);
     retry(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por mensagem
   }, [message.id]);
