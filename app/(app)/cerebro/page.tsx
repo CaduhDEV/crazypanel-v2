@@ -58,7 +58,6 @@ export default async function CerebroPage({ searchParams }: { searchParams: Sear
       .select("id", { count: "exact", head: true })
       .eq("status", "closed")
       .eq("close_reason", "resolved")
-      .not("resolved_by", "is", null)
       .is("brain_processed_at", null),
     db.from("brain_requests").select("id, status, sent_at, ticket_ids, created, confirmed, updated, skipped, error").order("sent_at", { ascending: false }).limit(6),
     siteUrl(),

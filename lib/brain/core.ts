@@ -101,7 +101,6 @@ async function pendingCount(db: Admin): Promise<number> {
     .select("id", { count: "exact", head: true })
     .eq("status", "closed")
     .eq("close_reason", "resolved")
-    .not("resolved_by", "is", null)
     .is("brain_processed_at", null);
   return count ?? 0;
 }
@@ -133,7 +132,6 @@ export async function dispatchBrain(): Promise<BrainDispatch> {
     .select("id, number, contact_id, subject, category, topic, resolved_by, resolution_message_id, ai_summary, close_note, closed_at")
     .eq("status", "closed")
     .eq("close_reason", "resolved")
-    .not("resolved_by", "is", null)
     .is("brain_processed_at", null)
     .order("closed_at", { ascending: true })
     .limit(PER_BATCH);
