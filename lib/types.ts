@@ -203,6 +203,8 @@ export interface Message {
   media_size: number | null;
   media_duration: number | null;
   media_status: "pending" | "ready" | "failed" | null;
+  /** Motivo da última falha ao baixar a mídia recebida. */
+  media_error?: string | null;
   /** pending: o painel pergunta se a mensagem é deste atendimento. */
   context_check?: "pending" | "confirmed" | null;
   quoted_wa_id: string | null;

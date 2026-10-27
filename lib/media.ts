@@ -43,7 +43,8 @@ export function mediaPath(direction: "in" | "out", id: string, mime: string | nu
 
 /** Baixa um arquivo público (ex.: fileURL da uazapi, que expira em 2 dias) e guarda no R2. */
 export async function copyRemoteToStorage(url: string, path: string, mime: string | null): Promise<{ size: number; mime: string; store: MediaStore }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(90_000), cache: "no-store" });
+  // Cabe na função (60 s) junto com o pedido à uazapi; o que não der, a rotina tenta de novo.
+  const res = await fetch(url, { signal: AbortSignal.timeout(35_000), cache: "no-store" });
   if (!res.ok) throw new Error(`download da mídia falhou (${res.status})`);
   const length = Number(res.headers.get("content-length") ?? 0);
   if (length > MAX_MEDIA_BYTES) throw new Error("mídia maior que o limite de 100 MB");

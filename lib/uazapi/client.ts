@@ -274,7 +274,7 @@ export class UazapiClient {
       "POST",
       "/message/download",
       { id, generate_mp3: true, return_link: true },
-      { retryOn429: true, timeoutMs: 60_000 },
+      { retryOn429: true, timeoutMs: 20_000 },
     );
   }
 }

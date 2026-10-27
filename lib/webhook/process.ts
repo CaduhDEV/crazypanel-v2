@@ -235,7 +235,8 @@ async function handleReaction(db: Admin, m: NormalizedMessage) {
 
 /**
  * Copia a mídia recebida para o Storage. A fileURL da uazapi expira em 2 dias,
- * então o arquivo precisa ser nosso. Falha não derruba a mensagem (já gravada).
+ * então o arquivo precisa ser nosso. Falha não derruba a mensagem (já gravada):
+ * o motivo fica em media_error e a rotina /api/cron/media-retry tenta de novo.
  */
 export async function storeIncomingMedia(
   db: Admin,
@@ -247,6 +248,8 @@ export async function storeIncomingMedia(
   // oscila): tenta de novo antes de marcar como falha. Roda depois da resposta
   // ao webhook (after), então a espera não segura a uazapi.
   const attempts = opts.attempts ?? MEDIA_ATTEMPTS;
+  const { data: row } = await db.from("messages").select("media_attempts").eq("id", messageId).maybeSingle<{ media_attempts: number }>();
+  const before = row?.media_attempts ?? 0;
   for (let attempt = 1; ; attempt++) {
     try {
       const uaz = clientFromRow(await getInstanceRow());
@@ -257,22 +260,31 @@ export async function storeIncomingMedia(
       const stored = await copyRemoteToStorage(dl.fileURL, path, mime);
       await db
         .from("messages")
-        .update({ media_path: path, media_store: stored.store, media_mime: stored.mime, media_size: stored.size, media_status: "ready" })
+        .update({
+          media_path: path,
+          media_store: stored.store,
+          media_mime: stored.mime,
+          media_size: stored.size,
+          media_status: "ready",
+          media_error: null,
+          media_attempts: before + attempt,
+        })
         .eq("id", messageId);
       return true;
     } catch (e) {
       if (attempt < attempts) {
-        await new Promise((r) => setTimeout(r, attempt * 3000));
+        await new Promise((r) => setTimeout(r, attempt * 5000));
         continue;
       }
-      console.error(`[webhook] mídia da mensagem ${messageId} falhou (${attempt} tentativas):`, e);
-      await db.from("messages").update({ media_status: "failed" }).eq("id", messageId);
+      const reason = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      console.error(`[webhook] mídia da mensagem ${messageId} falhou (${attempt} tentativas):`, reason);
+      await db.from("messages").update({ media_status: "failed", media_error: reason, media_attempts: before + attempt }).eq("id", messageId);
       return false;
     }
   }
 }
 
-const MEDIA_ATTEMPTS = 3;
+const MEDIA_ATTEMPTS = 2;
 
 // =============================================================================
 // messages_update (recibos, exclusão)

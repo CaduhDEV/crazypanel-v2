@@ -5,7 +5,8 @@
 export type MetricsPeriod = { days: number } | { from: string; to: string };
 
 export const PRESET_DAYS = [7, 30, 90] as const;
-export const MAX_RANGE_DAYS = 366;
+// Até 10 anos: o histórico começa em 2026, então um período maior só cobre o que existe.
+export const MAX_RANGE_DAYS = 3660;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;

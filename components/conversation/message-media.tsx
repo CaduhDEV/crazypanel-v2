@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Download, FileText, ImageOff, Loader2, MapPin, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -100,24 +100,40 @@ function ImageMedia({ message }: { message: Message }) {
   );
 }
 
+/** A uazapi guarda o arquivo por 2 dias: até lá, abrir a mensagem já tenta de novo. */
+const AUTO_RETRY_MS = 47 * 60 * 60 * 1000;
+
 function FailedMedia({ message }: { message: Message }) {
   const queryClient = useQueryClient();
   const [pending, start] = useTransition();
-  const retry = () =>
+  const autoTried = useRef(false);
+  const retry = (silent = false) =>
     start(async () => {
       const res = await retryMediaDownload({ messageId: message.id });
-      if (!res.ok) return void toast.error(res.error);
+      if (!res.ok) return void (silent || toast.error(res.error));
       // O Histórico e a página Mensagens não têm Realtime: a tela atualiza aqui.
       const ticketId = message.ticket_id;
       if (ticketId && !upsertThreadMessage(queryClient, ticketId, res.data)) queryClient.invalidateQueries({ queryKey: threadKey(ticketId) });
       queryClient.invalidateQueries({ queryKey: ["message-context"] });
     });
+
+  useEffect(() => {
+    if (autoTried.current || message.from_me || !message.wa_id) return;
+    if (Date.now() - Date.parse(message.sent_at) > AUTO_RETRY_MS) return;
+    autoTried.current = true;
+    retry(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez por mensagem
+  }, [message.id]);
+
   return (
-    <div className="flex w-64 max-w-full items-center gap-3 rounded-md border border-dashed border-border p-2.5 text-xs text-muted-foreground">
+    <div
+      className="flex w-64 max-w-full items-center gap-3 rounded-md border border-dashed border-border p-2.5 text-xs text-muted-foreground"
+      title={message.media_error ?? undefined}
+    >
       <ImageOff className="size-4 shrink-0" />
-      <span className="flex-1">Não foi possível baixar a mídia.</span>
+      <span className="flex-1">{pending ? "Baixando a mídia de novo…" : "Não foi possível baixar a mídia."}</span>
       {!message.from_me && (
-        <Button variant="ghost" size="icon-xs" onClick={retry} disabled={pending} aria-label="Tentar de novo">
+        <Button variant="ghost" size="icon-xs" onClick={() => retry()} disabled={pending} aria-label="Tentar de novo">
           {pending ? <Loader2 className="animate-spin" /> : <RotateCw />}
         </Button>
       )}
