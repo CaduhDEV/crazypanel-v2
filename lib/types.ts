@@ -79,6 +79,8 @@ export interface AppSettings {
   ai_moderation_min_confidence: number;
   /** Mandar a advertência no privado quando a IA dá flag. */
   ai_moderation_warn: boolean;
+  /** Cérebro: o agente lê os atendimentos resolvidos e monta o conhecimento. */
+  brain_enabled: boolean;
 }
 
 export interface WaGroup {
@@ -324,6 +326,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai_moderation_enabled: false,
   ai_moderation_min_confidence: 0.8,
   ai_moderation_warn: false,
+  brain_enabled: false,
 };
 
 /**

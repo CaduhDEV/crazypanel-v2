@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  Brain,
   Building2,
   ChevronsLeft,
   DoorOpen,
@@ -56,6 +57,7 @@ const SECTIONS: NavSection[] = [
       { href: "/leads", label: "Leads", icon: Contact },
       { href: "/solicitacoes", label: "Solicitações", icon: DoorOpen, badge: "join-requests" },
       { href: "/moderacao", label: "Moderação", icon: ShieldAlert },
+      { href: "/cerebro", label: "Cérebro", icon: Brain },
       { href: "/empresas", label: "Empresas", icon: Building2 },
       { href: "/convites", label: "Prospectos", icon: UserPlus },
       { href: "/historico", label: "Histórico", icon: History },
