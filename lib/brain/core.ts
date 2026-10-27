@@ -19,7 +19,13 @@ type Admin = ReturnType<typeof createAdminClient>;
 const PER_BATCH = 15;
 const MAX_MESSAGES = 30;
 const MAX_TEXT = 900;
-const MAX_EXISTING = 40;
+const MAX_EXISTING = 30;
+/** Resposta dos itens existentes no envio (o agente só precisa reconhecer o item). */
+const EXISTING_ANSWER = 400;
+/** Tamanho dos atendimentos num envio: o webhook do DC recusa corpos grandes (413). */
+const TICKETS_BUDGET = 45_000;
+/** Um atendimento sozinho não passa disso: conversas longas são cortadas no meio. */
+const TICKET_BUDGET = 12_000;
 /** Lote sem retorno há mais que isso: volta para a fila. */
 const STALE_MS = 10 * 60 * 1000;
 /** Categorias sem conhecimento reaproveitável (papo, elogio…). */
@@ -160,9 +166,25 @@ export async function dispatchBrain(): Promise<BrainDispatch> {
     byTicket.set(m.ticket_id, list);
   }
 
+  // Conversa de cada atendimento, cortada para caber no webhook do DC (413 acima do limite).
+  const payloads = tickets.map((t) => ticketPayload(t, byTicket.get(t.id) ?? []));
+  const keep: typeof payloads = [];
+  let size = 0;
+  for (const tp of payloads) {
+    const bytes = Buffer.byteLength(JSON.stringify(tp));
+    if (keep.length && size + bytes > TICKETS_BUDGET) break;
+    keep.push(tp);
+    size += bytes;
+  }
+  const keptIds = keep.map((tp) => tp.ticket_id);
+  const released = ids.filter((tid) => !keptIds.includes(tid));
+  // O que não coube volta para a fila (vai no próximo lote, na mesma ordem).
+  if (released.length) await db.from("tickets").update({ brain_processed_at: null }).in("id", released);
+  const sentTickets = tickets.filter((t) => keptIds.includes(t.id));
+
   // Itens que o cérebro já tem e parecem com cada atendimento.
   const existing = new Map<string, ExistingItem>();
-  for (const t of tickets) {
+  for (const t of sentTickets) {
     const first = byTicket.get(t.id)?.find((m) => m.contact_id === t.contact_id)?.body ?? "";
     const query = [t.subject, t.ai_summary, first].filter(Boolean).join(" ").slice(0, 600);
     if (!query.trim()) continue;
@@ -170,9 +192,9 @@ export async function dispatchBrain(): Promise<BrainDispatch> {
     for (const it of (found ?? []) as ExistingItem[]) if (existing.size < MAX_EXISTING) existing.set(it.id, it);
   }
 
-  const { data: req, error } = await db.from("brain_requests").insert({ ticket_ids: ids }).select("id").single<{ id: string }>();
+  const { data: req, error } = await db.from("brain_requests").insert({ ticket_ids: keptIds }).select("id").single<{ id: string }>();
   if (error || !req) {
-    await db.from("tickets").update({ brain_processed_at: null }).in("id", ids);
+    await db.from("tickets").update({ brain_processed_at: null }).in("id", keptIds);
     return { sent: false, tickets: 0, pending: await pendingCount(db), reason: "não foi possível registrar o envio" };
   }
 
@@ -185,42 +207,58 @@ export async function dispatchBrain(): Promise<BrainDispatch> {
     existing: [...existing.values()].map((i) => ({
       item_id: i.id,
       question: i.question,
-      answer: i.answer,
+      answer: i.answer.slice(0, EXISTING_ANSWER),
       category: i.category,
       topic: i.topic,
       occurrences: i.occurrences,
       last_seen_at: i.last_seen_at,
       answer_changed_at: i.answer_changed_at,
     })),
-    tickets: tickets.map((t) => ({
-      ticket_id: t.id,
-      resolved_at: t.closed_at,
-      category: t.category,
-      topic: t.topic,
-      resolved_by: t.resolved_by,
-      summary: t.ai_summary ? scrub(t.ai_summary) : null,
-      messages: (byTicket.get(t.id) ?? [])
-        .map((m) => {
-          const team = m.from_me || !!m.author_id || m.contact?.kind === "team";
-          const role = team ? "equipe" : m.contact_id === t.contact_id ? "lead" : "comunidade";
-          const text = scrub(`${m.kind !== "text" ? "[mídia] " : ""}${(m.body ?? "").trim()}`).slice(0, MAX_TEXT);
-          return { id: m.id, at: m.sent_at, role, text, resolved: m.id === t.resolution_message_id || undefined };
-        })
-        .filter((m) => m.text),
-    })),
+    tickets: keep,
   });
 
   try {
     const res = await signedPost(process.env.AI_BRAIN_WEBHOOK_URL!, body);
-    if (!res.ok) throw new Error(`agente respondeu ${res.status}`);
+    if (!res.ok) throw new Error(res.status === 413 ? `envio grande demais para o agente (${Buffer.byteLength(body)} bytes)` : `agente respondeu ${res.status}`);
     const text = await res.text().catch(() => "");
     if (text.trim()) await handleBrainResult(text).catch(() => undefined);
-    return { sent: true, tickets: tickets.length, pending: await pendingCount(db) };
+    return { sent: true, tickets: keep.length, pending: await pendingCount(db) };
   } catch (e) {
     await db.from("brain_requests").update({ status: "failed", error: e instanceof Error ? e.message : "falhou" }).eq("id", req.id);
-    await db.from("tickets").update({ brain_processed_at: null }).in("id", ids);
+    await db.from("tickets").update({ brain_processed_at: null }).in("id", keptIds);
     return { sent: false, tickets: 0, pending: await pendingCount(db), reason: e instanceof Error ? e.message : "falhou" };
   }
+}
+
+/**
+ * Um atendimento como vai para o agente. Conversa longa demais perde o meio:
+ * ficam o começo (a dúvida), a mensagem que resolveu e o fim.
+ */
+function ticketPayload(t: TicketRow, rows: MessageRow[]) {
+  const messages = rows
+    .map((m) => {
+      const team = m.from_me || !!m.author_id || m.contact?.kind === "team";
+      const role = team ? "equipe" : m.contact_id === t.contact_id ? "lead" : "comunidade";
+      const text = scrub(`${m.kind !== "text" ? "[mídia] " : ""}${(m.body ?? "").trim()}`).slice(0, MAX_TEXT);
+      return { id: m.id, at: m.sent_at, role, text, resolved: m.id === t.resolution_message_id || undefined };
+    })
+    .filter((m) => m.text);
+  const build = (list: typeof messages) => ({
+    ticket_id: t.id,
+    resolved_at: t.closed_at,
+    category: t.category,
+    topic: t.topic,
+    resolved_by: t.resolved_by,
+    summary: t.ai_summary ? scrub(t.ai_summary) : null,
+    messages: list,
+  });
+  let out = build(messages);
+  for (let keepEach = 8; Buffer.byteLength(JSON.stringify(out)) > TICKET_BUDGET && keepEach >= 2; keepEach -= 2) {
+    const resolvedAt = messages.findIndex((m) => m.resolved);
+    const picked = messages.filter((m, i) => i < keepEach || i >= messages.length - keepEach || Math.abs(i - resolvedAt) <= 1);
+    out = build(picked.map((m) => ({ ...m, text: m.text.slice(0, 300 + keepEach * 50) })));
+  }
+  return out;
 }
 
 export type BrainOutcome =
