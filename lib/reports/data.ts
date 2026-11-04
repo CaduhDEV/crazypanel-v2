@@ -54,10 +54,11 @@ export function reportPeriod(days: number, end = new Date()): { inicio: Date; fi
   return { inicio: new Date(fim.getTime() - days * 86_400_000), fim };
 }
 
-export async function loadCommunityReport(inicio: Date, fim: Date): Promise<CommunityReport> {
+export async function loadCommunityReport(inicio: Date, fim: Date, group: string | null = null): Promise<CommunityReport> {
   const { data, error } = await createAdminClient().rpc("community_report", {
     p_inicio: inicio.toISOString(),
     p_fim: fim.toISOString(),
+    p_group: group,
   });
   if (error) throw new Error(`Não foi possível calcular o relatório: ${error.message}`);
   return data as CommunityReport;
@@ -89,6 +90,8 @@ export interface LiveReport {
   fila: { abertas: number; aguardando: number; sem_responsavel: number; estouradas: number; espera_max_min: number | null };
   top_comunidade: { id: string; nome: string | null; avatar_url: string | null; empresa: string | null; tipo: string; threads: number; respostas: number; resolvidas: number }[];
   top_equipe: { id: string; nome: string; avatar_url: string | null; assumidas: number; resolvidas: number; respondidas: number; dentro_sla: number; mediana_min: number | null }[];
+  /** Top 5 da comunidade em cada grupo com respostas no período (sem o de parceiros). */
+  ranking_grupos?: { jid: string; nome: string | null; top: LiveReport["top_comunidade"] }[];
   resolucao: { comunidade: number; equipe: number; ambos: number; sem_resposta: number };
   categorias: { categoria: string; subcategoria: string | null; threads: number }[];
 }
@@ -101,13 +104,19 @@ export interface MetricsPayload {
   live: LiveReport;
 }
 
-export async function loadMetrics(period: MetricsPeriod): Promise<MetricsPayload> {
+/** Grupos que entram nas métricas (filtro da página). */
+export async function loadMetricGroups(): Promise<{ jid: string; name: string | null }[]> {
+  const { data } = await createAdminClient().from("wa_groups").select("jid, name").eq("listening", true).eq("is_partner_group", false).not("name", "ilike", "%teste%").order("name");
+  return (data ?? []) as { jid: string; name: string | null }[];
+}
+
+export async function loadMetrics(period: MetricsPeriod, group: string | null = null): Promise<MetricsPayload> {
   const { inicio, fim } = periodRange(period);
   const days = periodDays(period);
   const db = createAdminClient();
   const [report, live] = await Promise.all([
-    loadCommunityReport(inicio, fim),
-    db.rpc("community_report_live", { p_inicio: inicio.toISOString(), p_fim: fim.toISOString() }).then(({ data, error }) => {
+    loadCommunityReport(inicio, fim, group),
+    db.rpc("community_report_live", { p_inicio: inicio.toISOString(), p_fim: fim.toISOString(), p_group: group }).then(({ data, error }) => {
       if (error) throw new Error(`Não foi possível calcular as métricas ao vivo: ${error.message}`);
       return data as LiveReport;
     }),

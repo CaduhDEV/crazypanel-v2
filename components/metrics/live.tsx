@@ -7,34 +7,39 @@ import { periodQuery } from "@/lib/reports/period";
 
 /**
  * Métricas ao vivo: busca de novo a cada `intervalMs` e, em segundos, quando
- * chega mensagem ou muda um atendimento (Realtime do Supabase). Quem usa
- * recria o componente (key) ao trocar de período.
+ * chega mensagem ou muda um atendimento (Realtime do Supabase). `queryOverride`
+ * (período e grupo) troca o filtro sem recarregar: os dados atuais ficam na tela
+ * até os novos chegarem (`switching`).
  */
-export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
+export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000, queryOverride?: string) {
   const [data, setData] = useState(initial);
   const [updatedAt, setUpdatedAt] = useState(() => Date.now());
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const query = periodQuery(initial.period);
-  const inFlight = useRef(false);
+  const query = queryOverride ?? periodQuery(initial.period);
+  const [loadedQuery, setLoadedQuery] = useState(query);
+  const lastRequest = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    // Só a resposta do pedido mais recente vale (trocar de filtro no meio de outro).
+    const request = ++lastRequest.current;
     setRefreshing(true);
     try {
       const res = await fetch(`/api/metrics?${query}`, { cache: "no-store" });
       const body = await res.json();
+      if (request !== lastRequest.current) return;
       if (!res.ok) throw new Error(body?.error ?? "Falha ao atualizar.");
       setData(body as MetricsPayload);
+      setLoadedQuery(query);
       setUpdatedAt(Date.now());
       setError(null);
     } catch (e) {
+      if (request !== lastRequest.current) return;
+      setLoadedQuery(query);
       setError(e instanceof Error ? e.message : "Falha ao atualizar.");
     } finally {
-      inFlight.current = false;
-      setRefreshing(false);
+      if (request === lastRequest.current) setRefreshing(false);
     }
   }, [query]);
 
@@ -42,6 +47,14 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
     const id = setInterval(refresh, intervalMs);
     return () => clearInterval(id);
   }, [refresh, intervalMs]);
+
+  // Filtro trocado: busca na hora.
+  const fetchedQuery = useRef(query);
+  useEffect(() => {
+    if (fetchedQuery.current === query) return;
+    fetchedQuery.current = query;
+    void refresh();
+  }, [query, refresh]);
 
   useEffect(() => {
     const soon = () => {
@@ -61,7 +74,7 @@ export function useLiveMetrics(initial: MetricsPayload, intervalMs = 60_000) {
     };
   }, [refresh, query]);
 
-  return { data, updatedAt, refreshing, error, refresh };
+  return { data, updatedAt, refreshing, error, refresh, switching: loadedQuery !== query };
 }
 
 /**

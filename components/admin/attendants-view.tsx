@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, MailPlus, MoreHorizontal, RotateCcw, Send, UserCheck, UserX, UsersRound } from "lucide-react";
+import { Loader2, MailPlus, MoreHorizontal, Phone, Plus, RotateCcw, Send, Trash2, UserCheck, UserX, UsersRound } from "lucide-react";
 import { toast } from "sonner";
-import { changeRole, inviteAttendant, resendAccess, setActive } from "@/lib/admin/attendants";
+import { addAttendantPhone, changeRole, inviteAttendant, linkContactToAttendant, listAttendantPhones, removeAttendantPhone, resendAccess, setActive, type AttendantPhones } from "@/lib/admin/attendants";
 import { ALLOWED_EMAIL_DOMAIN } from "@/lib/auth/validation";
-import { cn, formatRelative } from "@/lib/utils";
+import { cn, contactLabel, formatPhone, formatRelative } from "@/lib/utils";
 import { ROLE_LABELS, type AppRole, type Profile } from "@/lib/types";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +73,7 @@ export function AttendantsView({ rows, currentUserId }: { rows: AttendantRow[]; 
 function AttendantRowView({ row, isSelf }: { row: AttendantRow; isSelf: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [phonesOpen, setPhonesOpen] = useState(false);
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, success: string) =>
     start(async () => {
@@ -126,7 +127,11 @@ function AttendantRowView({ row, isSelf }: { row: AttendantRow; isSelf: boolean 
         {pending ? (
           <Loader2 className="ml-auto size-4 animate-spin text-muted-foreground" />
         ) : (
-          !isSelf && (
+          isSelf ? (
+            <Button variant="ghost" size="sm" onClick={() => setPhonesOpen(true)}>
+              <Phone /> Números
+            </Button>
+          ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-sm" aria-label={`Ações para ${row.name}`}>
@@ -134,6 +139,9 @@ function AttendantRowView({ row, isSelf }: { row: AttendantRow; isSelf: boolean 
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setPhonesOpen(true)}>
+                  <Phone /> Números do WhatsApp
+                </DropdownMenuItem>
                 {row.active && (
                   <DropdownMenuItem onSelect={() => run(() => resendAccess({ profileId: row.id }), "Link de acesso enviado por e-mail.")}>
                     {row.invitePending ? <Send /> : <RotateCcw />}
@@ -156,8 +164,106 @@ function AttendantRowView({ row, isSelf }: { row: AttendantRow; isSelf: boolean 
             </DropdownMenu>
           )
         )}
+        {phonesOpen && <PhonesDialog row={row} onClose={() => setPhonesOpen(false)} />}
       </td>
     </tr>
+  );
+}
+
+/** Números do atendente: as mensagens que vêm deles contam nas métricas dele. */
+function PhonesDialog({ row, onClose }: { row: AttendantRow; onClose: () => void }) {
+  const [data, setData] = useState<AttendantPhones | null>(null);
+  const [phone, setPhone] = useState("");
+  const [pending, start] = useTransition();
+
+  const load = () =>
+    listAttendantPhones({ profileId: row.id }).then((res) => {
+      if (res.ok) setData(res.data);
+      else toast.error(res.error);
+    });
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uma vez ao abrir
+  }, []);
+
+  const act = (fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) =>
+    start(async () => {
+      const res = await fn();
+      if (!res.ok) return void toast.error(res.error);
+      after?.();
+      await load();
+    });
+
+  const label = (c: { name: string | null; phone: string | null; lid: string | null }) => contactLabel(c);
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="text-left">
+        <DialogHeader>
+          <DialogTitle>Números de {row.name}</DialogTitle>
+          <DialogDescription>Toda mensagem desses números no grupo conta para esta pessoa nas métricas, inclusive as antigas. Pode ter mais de um.</DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            act(() => addAttendantPhone({ profileId: row.id, phone }), () => setPhone(""));
+          }}
+        >
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" aria-label="Número do WhatsApp" />
+          <Button type="submit" disabled={pending || !phone.trim()}>
+            {pending ? <Loader2 className="animate-spin" /> : <Plus />} Adicionar
+          </Button>
+        </form>
+        {!data ? (
+          <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="flex flex-col gap-4 text-sm">
+            <ul className="flex flex-col gap-1">
+              {data.phones.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-1.5">
+                  <span className="font-mono text-[13px]">{formatPhone(p.phone)}</span>
+                  <Button variant="ghost" size="icon-xs" disabled={pending} onClick={() => act(() => removeAttendantPhone({ id: p.id }))} aria-label="Remover número">
+                    <Trash2 />
+                  </Button>
+                </li>
+              ))}
+              {data.phones.length === 0 && <li className="text-xs text-muted-foreground">Nenhum número cadastrado.</li>}
+            </ul>
+            {data.contacts.length > 0 && (
+              <section className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Contatos ligados</span>
+                {data.contacts.map((c) => (
+                  <span key={c.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate">{label(c)} · {c.message_count} mensagens</span>
+                    {!c.phone && (
+                      <Button variant="ghost" size="sm" disabled={pending} onClick={() => act(() => linkContactToAttendant({ contactId: c.id, profileId: null }))}>
+                        Desligar
+                      </Button>
+                    )}
+                  </span>
+                ))}
+              </section>
+            )}
+            {data.unlinked.length > 0 && (
+              <section className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Contatos da equipe sem atendente (o WhatsApp pode esconder o número: ligue por aqui)</span>
+                <div className="scroll-thin flex max-h-40 flex-col gap-1 overflow-y-auto">
+                  {data.unlinked.map((c) => (
+                    <span key={c.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate">{label(c)} · {c.message_count} mensagens</span>
+                      <Button variant="outline" size="sm" disabled={pending} onClick={() => act(() => linkContactToAttendant({ contactId: c.id, profileId: row.id }))}>
+                        Ligar
+                      </Button>
+                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

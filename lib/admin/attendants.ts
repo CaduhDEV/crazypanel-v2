@@ -11,6 +11,77 @@ import { sendPasswordLink } from "@/lib/auth/recovery";
 
 const roleSchema = z.enum(["admin", "attendant"]);
 
+// --- Números do atendente: toda mensagem desses números conta para ele ------------
+
+function normalizePhone(raw: string): string | null {
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 10 || d.length === 11) return `55${d}`;
+  return d.length >= 12 && d.length <= 15 ? d : null;
+}
+
+export interface AttendantPhones {
+  phones: { id: string; phone: string }[];
+  /** Contatos ligados a este atendente (inclui os só com @lid). */
+  contacts: { id: string; name: string | null; phone: string | null; lid: string | null; message_count: number }[];
+  /** Contatos da equipe ainda sem atendente: dá para ligar direto (quem só tem @lid). */
+  unlinked: { id: string; name: string | null; phone: string | null; lid: string | null; message_count: number }[];
+}
+
+const CONTACT_COLUMNS = "id, name, phone, lid, message_count";
+
+export async function listAttendantPhones(input: { profileId: string }): Promise<ActionResult<AttendantPhones>> {
+  return runAction(z.object({ profileId: z.uuid() }), input, async ({ profileId }) => {
+    await requireAdmin();
+    const db = createAdminClient();
+    const [phones, contacts, unlinked] = await Promise.all([
+      db.from("profile_phones").select("id, phone").eq("profile_id", profileId).order("created_at"),
+      db.from("contacts").select(CONTACT_COLUMNS).eq("attendant_id", profileId).order("message_count", { ascending: false }),
+      db.from("contacts").select(CONTACT_COLUMNS).eq("kind", "team").is("attendant_id", null).order("message_count", { ascending: false }).limit(50),
+    ]);
+    if (phones.error) throw phones.error;
+    return {
+      phones: (phones.data ?? []) as AttendantPhones["phones"],
+      contacts: (contacts.data ?? []) as AttendantPhones["contacts"],
+      unlinked: (unlinked.data ?? []) as AttendantPhones["unlinked"],
+    };
+  });
+}
+
+const addPhoneSchema = z.object({ profileId: z.uuid(), phone: z.string().trim().max(40) });
+
+export async function addAttendantPhone(input: z.input<typeof addPhoneSchema>): Promise<ActionResult<void>> {
+  return runAction(addPhoneSchema, input, async ({ profileId, phone }) => {
+    await requireAdmin();
+    const normalized = normalizePhone(phone);
+    if (!normalized) throw new ActionError("Confira o número (DDD + número).");
+    const { error } = await createAdminClient().from("profile_phones").insert({ profile_id: profileId, phone: normalized });
+    if (error) {
+      if (error.code === "23505") throw new ActionError("Este número já está vinculado a um atendente.");
+      throw error;
+    }
+    revalidatePath("/metricas");
+  });
+}
+
+export async function removeAttendantPhone(input: { id: string }): Promise<ActionResult<void>> {
+  return runAction(z.object({ id: z.uuid() }), input, async ({ id }) => {
+    await requireAdmin();
+    const { error } = await createAdminClient().from("profile_phones").delete().eq("id", id);
+    if (error) throw error;
+  });
+}
+
+const linkContactSchema = z.object({ contactId: z.uuid(), profileId: z.uuid().nullable() });
+
+/** Liga um contato direto ao atendente (ou desliga, com profileId nulo). */
+export async function linkContactToAttendant(input: z.input<typeof linkContactSchema>): Promise<ActionResult<void>> {
+  return runAction(linkContactSchema, input, async ({ contactId, profileId }) => {
+    await requireAdmin();
+    const { error } = await createAdminClient().from("contacts").update({ attendant_id: profileId }).eq("id", contactId);
+    if (error) throw error;
+  });
+}
+
 const inviteSchema = z.object({
   name: z.string().trim().min(2, { error: "Informe o nome." }).max(80),
   email: emailSchema,

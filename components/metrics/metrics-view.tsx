@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, FileDown, MonitorPlay } from "lucide-react";
+import { AlertTriangle, CalendarRange, ChevronLeft, ChevronRight, FileDown, Loader2, MonitorPlay } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { indicators, pct, type MetricsPayload } from "@/lib/reports/data";
 import { periodLabel, periodQuery, type MetricsPeriod } from "@/lib/reports/period";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/components/app/app-context";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { delta, fInt, fMin, fPct } from "@/lib/reports/format";
@@ -25,9 +25,30 @@ const PAGES = [
 
 type PageKey = (typeof PAGES)[number]["key"];
 
-export function MetricsView({ initial, periods }: { initial: MetricsPayload; periods: number[] }) {
-  const { data, error } = useLiveMetrics(initial);
+const ALL_GROUPS = "__all__";
+
+export function MetricsView({
+  initial,
+  initialGroup,
+  groups,
+  periods,
+}: {
+  initial: MetricsPayload;
+  initialGroup: string | null;
+  groups: { jid: string; name: string | null }[];
+  periods: number[];
+}) {
+  // Período e grupo ficam aqui: trocar não recarrega a página (nem volta para a 1ª aba).
+  const [period, setPeriod] = useState<MetricsPeriod>(initial.period);
+  const [group, setGroup] = useState<string | null>(initialGroup);
+  const query = `${periodQuery(period)}${group ? `&grupo=${encodeURIComponent(group)}` : ""}`;
+  const { data, error, switching } = useLiveMetrics(initial, 60_000, query);
   const [page, setPage] = useState<PageKey>("geral");
+
+  useEffect(() => {
+    window.history.replaceState(null, "", `/metricas?${query}`);
+  }, [query]);
+
   const index = PAGES.findIndex((p) => p.key === page);
   const go = (step: number) => setPage(PAGES[(index + step + PAGES.length) % PAGES.length].key);
 
@@ -74,14 +95,28 @@ export function MetricsView({ initial, periods }: { initial: MetricsPayload; per
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title={error ?? undefined}>
           </span>
-          <PeriodPicker period={data.period} periods={periods} />
+          {switching && <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Atualizando" />}
+          <Select value={group ?? ALL_GROUPS} onValueChange={(v) => setGroup(v === ALL_GROUPS ? null : v)}>
+            <SelectTrigger className="h-8 w-52" aria-label="Comunidade">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_GROUPS}>Todas as comunidades</SelectItem>
+              {groups.map((g) => (
+                <SelectItem key={g.jid} value={g.jid}>
+                  {g.name ?? g.jid}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <PeriodPicker period={period} periods={periods} onChange={setPeriod} />
           <Button variant="outline" size="sm" asChild>
-            <a href={`/api/reports/pdf?${periodQuery(data.period)}`} target="_blank" rel="noopener">
+            <a href={`/api/reports/pdf?${periodQuery(period)}`} target="_blank" rel="noopener">
               <FileDown /> PDF
             </a>
           </Button>
           <Button size="sm" asChild>
-            <Link href={`/telao?${periodQuery(data.period)}`} target="_blank">
+            <Link href={`/telao?${periodQuery(period)}`} target="_blank">
               <MonitorPlay /> Modo telão
             </Link>
           </Button>
@@ -90,7 +125,8 @@ export function MetricsView({ initial, periods }: { initial: MetricsPayload; per
 
       <DataQuality data={data} />
 
-      <div key={page} className="metrics-page-enter flex min-h-0 flex-1 flex-col gap-3">
+      {/* Troca de filtro: os dados atuais ficam, levemente apagados, até os novos chegarem. */}
+      <div key={page} aria-busy={switching} className={cn("metrics-page-enter flex min-h-0 flex-1 flex-col gap-3 transition-opacity duration-200", switching && "opacity-60")}>
         {page === "geral" && <Overview data={data} />}
         {page === "comunidade" && <CommunityPage data={data} />}
         {page === "equipe" && <TeamPage data={data} />}
@@ -105,8 +141,7 @@ export function MetricsView({ initial, periods }: { initial: MetricsPayload; per
 const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
 
 /** Atalhos (7, 30, 90 dias) e um intervalo escolhido: data inicial e final. */
-function PeriodPicker({ period, periods }: { period: MetricsPeriod; periods: number[] }) {
-  const router = useRouter();
+function PeriodPicker({ period, periods, onChange }: { period: MetricsPeriod; periods: number[]; onChange: (p: MetricsPeriod) => void }) {
   const custom = !("days" in period);
   const [today] = useState(() => ymd.format(new Date()));
   const [open, setOpen] = useState(false);
@@ -117,7 +152,7 @@ function PeriodPicker({ period, periods }: { period: MetricsPeriod; periods: num
   const apply = () => {
     if (invalid) return;
     setOpen(false);
-    router.push(`/metricas?${periodQuery({ from, to })}`);
+    onChange({ from, to });
   };
 
   return (
@@ -125,15 +160,16 @@ function PeriodPicker({ period, periods }: { period: MetricsPeriod; periods: num
       {periods.map((d) => {
         const active = !custom && "days" in period && period.days === d;
         return (
-          <Link
+          <button
             key={d}
-            href={`/metricas?dias=${d}`}
+            type="button"
+            onClick={() => onChange({ days: d })}
             role="tab"
             aria-selected={active}
             className={cn("rounded px-2.5 py-1 text-[13px]", active ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent")}
           >
             {d} dias
-          </Link>
+          </button>
         );
       })}
       <Popover open={open} onOpenChange={setOpen}>
@@ -274,7 +310,7 @@ function TeamPage({ data }: { data: MetricsPayload }) {
         ]}
       />
       <Grid>
-        <Card title="Top 5 da equipe" description="Atendimentos assumidos no período." className="lg:col-span-5">
+        <Card title="Top 5 da equipe" description="Atendimentos assumidos ou respondidos, pelo painel ou por número vinculado." className="lg:col-span-5">
           <People
             rows={team.map((t) => ({
               id: t.id,

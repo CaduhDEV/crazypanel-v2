@@ -44,6 +44,7 @@ export async function addFlag(input: z.input<typeof flagSchema>): Promise<Action
     if (!res.ok) {
       if (res.error === "duplicate") throw new ActionError("Essa mensagem já tem flag.");
       if (res.error === "not_found") throw new ActionError("Lead não encontrado.");
+      if (res.error === "exempt") throw new ActionError("Este lead é divulgador autorizado: não recebe flag. Tire a autorização antes.");
       throw new ActionError("Não foi possível dar a flag.");
     }
     done();
@@ -93,6 +94,24 @@ export async function listLeadFlags(input: { contactId: string }): Promise<Actio
       .limit(50);
     if (error) throw error;
     return (data ?? []) as unknown as LeadFlag[];
+  });
+}
+
+const exemptSchema = z.object({ contactId: z.uuid(), exempt: z.boolean(), note: z.string().trim().max(300).optional() });
+
+/** Divulgador autorizado: a IA não avalia as mensagens dele e a equipe não consegue dar flag. */
+export async function setFlagExempt(input: z.input<typeof exemptSchema>): Promise<ActionResult<void>> {
+  return runAction(exemptSchema, input, async ({ contactId, exempt, note }) => {
+    const admin = await requireAdmin();
+    const db = createAdminClient();
+    const { error } = await db
+      .from("contacts")
+      .update({ flag_exempt: exempt, flag_exempt_note: exempt ? note || null : null, flag_exempt_at: exempt ? new Date().toISOString() : null, flag_exempt_by: exempt ? admin.id : null })
+      .eq("id", contactId);
+    if (error) throw error;
+    await logModeration(db, { contact_id: contactId, type: "note", reason: exempt ? `Autorizado a divulgar${note ? `: ${note}` : ""}` : "Autorização de divulgação retirada", actor_id: admin.id });
+    done();
+    revalidatePath(`/leads/${contactId}`);
   });
 }
 
