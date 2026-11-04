@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Copy, Loader2, MessageSquareText, RefreshCw, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -173,7 +174,12 @@ function LeadProfile({ contactId, onDeleted }: { contactId: string; onDeleted: (
       <DialogHeader className="flex-row items-start gap-4 space-y-0 text-left">
         <Avatar name={name} src={c.avatar_url} size="lg" className="size-16 text-lg" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <DialogTitle className="truncate text-lg">{name}</DialogTitle>
+          <DialogTitle className="flex items-center gap-3 text-lg">
+            <span className="truncate">{name}</span>
+            <Link href={`/leads/${c.id}`} className="shrink-0 text-xs font-medium text-primary hover:underline dark:text-[#9fc0ef]">
+              Ver perfil completo
+            </Link>
+          </DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {c.phone ? (
               <button type="button" onClick={() => copy(c.phone!, "Telefone")} className="flex items-center gap-1 hover:text-foreground">

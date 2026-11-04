@@ -32,7 +32,7 @@ type Candidate = {
   author_id: string | null;
   sender_name: string | null;
   quoted_wa_id: string | null;
-  contact: { name: string | null; kind: string } | null;
+  contact: { name: string | null; kind: string; flag_exempt: boolean } | null;
   group: { name: string | null } | null;
 };
 
@@ -53,7 +53,7 @@ export async function dispatchModeration(): Promise<ModerationDispatch> {
 
   const { data } = await db
     .from("messages")
-    .select("id, sent_at, body, kind, contact_id, author_id, sender_name, quoted_wa_id, contact:contacts!contact_id(name, kind), group:wa_groups(name)")
+    .select("id, sent_at, body, kind, contact_id, author_id, sender_name, quoted_wa_id, contact:contacts!contact_id(name, kind, flag_exempt), group:wa_groups(name)")
     .is("ai_moderated_at", null)
     .eq("from_me", false)
     .eq("is_note", false)
@@ -73,8 +73,8 @@ export async function dispatchModeration(): Promise<ModerationDispatch> {
     .select("id");
   const mine = new Set(((claimed ?? []) as { id: string }[]).map((r) => r.id));
 
-  // Equipe e mensagens sem texto ficam de fora (já marcadas como lidas).
-  const eligible = rows.filter((m) => mine.has(m.id) && m.contact_id && !m.author_id && m.contact?.kind !== "team" && (m.body ?? "").trim().length >= 2);
+  // Equipe, divulgadores autorizados e mensagens sem texto ficam de fora (já marcadas como lidas).
+  const eligible = rows.filter((m) => mine.has(m.id) && m.contact_id && !m.author_id && m.contact?.kind !== "team" && !m.contact?.flag_exempt && (m.body ?? "").trim().length >= 2);
   if (!eligible.length) return out;
 
   // A mensagem respondida ajuda a entender o tom (ex.: xingamento em resposta).
@@ -221,7 +221,7 @@ async function applyViolations(
     if (res.ok) {
       flagged++;
       if (sendWarning) warned.add(msg.contact_id);
-    } else skipped.push({ message_id: messageId, reason: res.error === "duplicate" ? "já tinha flag" : "falhou" });
+    } else skipped.push({ message_id: messageId, reason: res.error === "duplicate" ? "já tinha flag" : res.error === "exempt" ? "divulgador autorizado" : "falhou" });
   }
 
   await db.from("ai_moderation_requests").update({ flagged, error: skipped.length ? skipped.map((s) => s.reason).join("; ").slice(0, 500) : null }).eq("id", req.id);

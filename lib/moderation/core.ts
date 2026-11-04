@@ -6,12 +6,12 @@ import { sendPrivate, type PrivateResult } from "@/lib/community/core";
 // mensagem ou no lead) e desfazer. Usado pelas ações da tela e pela IA.
 
 type Db = ReturnType<typeof createAdminClient>;
-type ContactRow = { id: string; name: string | null; phone: string | null; lid: string | null; strikes: number };
+type ContactRow = { id: string; name: string | null; phone: string | null; lid: string | null; strikes: number; flag_exempt: boolean };
 
 export type ModerationEventType = "flag_added" | "flag_removed" | "removed" | "note";
 
 export async function loadContact(db: Db, id: string): Promise<ContactRow | null> {
-  const { data } = await db.from("contacts").select("id, name, phone, lid, strikes").eq("id", id).maybeSingle<ContactRow>();
+  const { data } = await db.from("contacts").select("id, name, phone, lid, strikes, flag_exempt").eq("id", id).maybeSingle<ContactRow>();
   return data ?? null;
 }
 
@@ -63,7 +63,7 @@ export function parseRules(text: string): string[] {
 
 export type FlagOutcome =
   | { ok: true; strikes: number; limit: number; message: PrivateResult | null; eventId: number }
-  | { ok: false; error: "duplicate" | "not_found" | "failed" };
+  | { ok: false; error: "duplicate" | "not_found" | "failed" | "exempt" };
 
 /**
  * +1 flag no lead, opcionalmente presa a uma mensagem (uma flag ativa por
@@ -84,6 +84,8 @@ export async function applyFlag(
 ): Promise<FlagOutcome> {
   const [contact, settings] = await Promise.all([loadContact(db, input.contactId), getSettings()]);
   if (!contact) return { ok: false, error: "not_found" };
+  // Divulgador autorizado não recebe flag.
+  if (contact.flag_exempt) return { ok: false, error: "exempt" };
 
   // Primeiro o evento: o índice único barra a segunda flag na mesma mensagem.
   const { data: ev, error } = await db

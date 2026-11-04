@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Building2, ChevronLeft, ChevronRight, Contact as ContactIcon, Handshake, Download, Flag, Loader2, Search, ShieldCheck } from "lucide-react";
 import { cn, contactLabel, formatPhone, formatRelative, formatTaxId, pluralize } from "@/lib/utils";
@@ -13,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { EmptyState, Tip } from "@/components/ui/misc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LinkContactDialog, type LinkTarget } from "@/components/leads/link-contact-dialog";
-import { LeadProfileDialog } from "@/components/leads/lead-profile-dialog";
 
 import type { FlagFilter, LinkFilter } from "@/lib/leads/query";
 export type { LinkFilter };
@@ -81,7 +81,6 @@ export function LeadsView({
   const [navigating, startNav] = useTransition();
   const [search, setSearch] = useState(filters.q);
   const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
-  const [profileId, setProfileId] = useState<string | null>(null);
   const groupName = new Map(groups.map((g) => [g.jid, g.name ?? g.jid]));
 
   const update = (patch: Record<string, string | null>) => {
@@ -224,16 +223,15 @@ export function LeadsView({
                     <span className="flex items-center gap-2.5">
                       <Avatar name={contactLabel(r)} src={r.avatar_url} size="sm" />
                       <span className="flex min-w-0 flex-col">
-                        <button
-                          type="button"
-                          onClick={() => setProfileId(r.id)}
+                        <Link
+                          href={`/leads/${r.id}`}
                           className={cn(
                             "max-w-56 truncate text-left font-medium underline-offset-2 hover:underline",
                             inapto ? "text-destructive" : "hover:text-primary dark:hover:text-[#9fc0ef]",
                           )}
                         >
                           {contactLabel(r)}
-                        </button>
+                        </Link>
                         {strikes > 0 && (
                           <span className={cn("flex items-center gap-1 text-[11px] font-medium", inapto ? "text-destructive" : "text-warning")} title={`${strikes} de ${flagLimit} flags`}>
                             <Flag className={cn("size-3", inapto ? "fill-destructive" : "fill-warning")} />
@@ -339,7 +337,6 @@ export function LeadsView({
       )}
 
       <LinkContactDialog target={linkTarget} onClose={() => setLinkTarget(null)} onSaved={() => router.refresh()} />
-      <LeadProfileDialog contactId={profileId} onClose={() => setProfileId(null)} onDeleted={() => router.refresh()} />
     </main>
   );
 }

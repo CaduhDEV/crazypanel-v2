@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Building2, Copy, Link2 } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Building2, Copy, ExternalLink, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { updateContactNotes } from "@/lib/leads/actions";
@@ -100,7 +101,13 @@ export function LeadPanel({ ticket, onNavigate }: { ticket: ThreadTicket; onNavi
               Ex-membro
             </Badge>
           )}
+          {contact.flag_exempt && <Badge variant="success">Divulgador autorizado</Badge>}
         </span>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/leads/${contact.id}`} target="_blank">
+            <ExternalLink /> Ver mais
+          </Link>
+        </Button>
       </div>
 
       <GleapSection contactId={contact.id} />

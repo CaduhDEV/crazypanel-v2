@@ -17,11 +17,18 @@ const LOGO_PATH =
 
 const SLIDE_TABS = [
   { id: 0, label: "Visão Geral", icon: BarChart3 },
-  { id: 1, label: "Top 5 Comunidade", icon: Users },
+  { id: 1, label: "Top 5 por Grupo", icon: Users },
   { id: 2, label: "Top 5 Equipe", icon: Headphones },
   { id: 3, label: "Quem Resolveu", icon: PieChart },
   { id: 4, label: "Threads por Dia", icon: TrendingUp },
 ];
+
+/** Próximo slide; o da comunidade (índice 1) passa por todos os grupos antes de seguir. */
+function stepSlide(s: { index: number; sub: number }, dir: 1 | -1, groups: number) {
+  if (s.index === 1 && s.sub + dir >= 0 && s.sub + dir < groups) return { index: 1, progress: 0, sub: s.sub + dir };
+  const index = (s.index + dir + SLIDE_TABS.length) % SLIDE_TABS.length;
+  return { index, progress: 0, sub: index === 1 && dir < 0 ? Math.max(0, groups - 1) : 0 };
+}
 
 export function TvView({ initial }: { initial: MetricsPayload }) {
   const { data } = useLiveMetrics(initial, 30_000);
@@ -30,11 +37,15 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
   // Slide atual e progresso juntos: o avanço é uma atualização só, sem efeito
   // colateral. (Antes o índice era trocado de dentro da atualização do progresso,
   // e o React em desenvolvimento roda essas funções duas vezes: pulava um slide.)
-  const [slide, setSlide] = useState({ index: 0, progress: 0 });
+  // sub: qual grupo o slide da comunidade está mostrando (um ranking por grupo).
+  const [slide, setSlide] = useState({ index: 0, progress: 0, sub: 0 });
   const slideIndex = slide.index;
   const slideProgress = slide.progress;
   const goTo = (index: number | ((current: number) => number)) =>
-    setSlide((s) => ({ index: typeof index === "function" ? index(s.index) : index, progress: 0 }));
+    setSlide((s) => ({ index: typeof index === "function" ? index(s.index) : index, progress: 0, sub: 0 }));
+  const groupRanks = data.live.ranking_grupos ?? [];
+  const groupCount = groupRanks.length;
+  const communityRank = groupRanks[Math.min(slide.sub, Math.max(0, groupCount - 1))];
   const [slidePaused, setSlidePaused] = useState(false);
   const [trendView, setTrendView] = useState<"7d" | "hoje">("7d");
   const idle = useIdle(3000);
@@ -44,29 +55,29 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
     if (!slideMode || slidePaused) return;
     const timer = setInterval(() => {
       // 8 segundos por slide (80 × 100 ms)
-      setSlide((s) => (s.progress >= 100 ? { index: (s.index + 1) % SLIDE_TABS.length, progress: 0 } : { ...s, progress: s.progress + 1.25 }));
+      setSlide((s) => (s.progress >= 100 ? stepSlide(s, 1, groupCount) : { ...s, progress: s.progress + 1.25 }));
     }, 100);
     return () => clearInterval(timer);
-  }, [slideMode, slidePaused]);
+  }, [slideMode, slidePaused, groupCount]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "s" || e.key === "S") {
         setSlideMode((m) => !m);
-        setSlide({ index: 0, progress: 0 });
+        setSlide({ index: 0, progress: 0, sub: 0 });
         setSlidePaused(false);
       } else if (e.code === "Space") {
         e.preventDefault();
         setSlidePaused((p) => !p);
       } else if (e.key === "ArrowRight") {
-        setSlide((s) => ({ index: (s.index + 1) % SLIDE_TABS.length, progress: 0 }));
+        setSlide((s) => stepSlide(s, 1, groupCount));
       } else if (e.key === "ArrowLeft") {
-        setSlide((s) => ({ index: (s.index - 1 + SLIDE_TABS.length) % SLIDE_TABS.length, progress: 0 }));
+        setSlide((s) => stepSlide(s, -1, groupCount));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [groupCount]);
 
   useEffect(() => {
     const onChange = () => setFull(!!document.fullscreenElement);
@@ -204,9 +215,10 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
           {slideIndex === 1 && (
             <div className="flex flex-1 flex-col justify-center min-h-0 animate-in fade-in duration-500 px-[4vw]">
               <PodiumView
-                title="Destaques da Comunidade"
-                subtitle="membros e parceiros que mais ajudaram outros membros no período"
-                items={data.live.top_comunidade.map((a) => ({
+                key={communityRank?.jid ?? "geral"}
+                title={communityRank ? `Destaques · ${communityRank.nome ?? "Grupo"}` : "Destaques da Comunidade"}
+                subtitle={groupCount > 1 ? `quem mais ajudou neste grupo · grupo ${Math.min(slide.sub, groupCount - 1) + 1} de ${groupCount}` : "quem mais ajudou neste grupo no período"}
+                items={(communityRank?.top ?? []).map((a) => ({
                   id: a.id,
                   name: a.nome ?? "Sem nome",
                   avatar: a.avatar_url,
@@ -229,7 +241,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
             <div className="flex flex-1 flex-col justify-center min-h-0 animate-in fade-in duration-500 px-[4vw]">
               <PodiumView
                 title="Destaques da Equipe"
-                subtitle="atendimentos assumidos e velocidade de resposta da equipe técnica"
+                subtitle="geral: atendimentos assumidos ou respondidos e velocidade de resposta"
                 items={data.live.top_equipe.map((t) => ({
                   id: t.id,
                   name: t.nome,

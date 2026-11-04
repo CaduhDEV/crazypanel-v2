@@ -133,6 +133,11 @@ export interface Contact {
   /** Flags de moderação (advertências). Com o limite das Configurações, o lead fica inapto. */
   strikes: number;
   removed_from_community_at?: string | null;
+  /** Divulgador autorizado: não recebe flag. */
+  flag_exempt?: boolean;
+  flag_exempt_note?: string | null;
+  /** Atendente dono deste número: as mensagens contam para ele. */
+  attendant_id?: string | null;
   notes: string | null;
   message_count: number;
   first_seen_at: string;

@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Moderação" };
 
 type SearchParams = Promise<Record<string, string | undefined>>;
 
-const LEAD_COLUMNS = "id, name, phone, lid, kind, avatar_url, strikes, removed_from_community_at, left_community_at, company:companies(name)";
+const LEAD_COLUMNS = "id, name, phone, lid, kind, avatar_url, strikes, removed_from_community_at, left_community_at, flag_exempt, flag_exempt_note, company:companies(name)";
 
 export default async function ModeracaoPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdminPage();
@@ -33,7 +33,7 @@ export default async function ModeracaoPage({ searchParams }: { searchParams: Se
     db
       .from("contacts")
       .select(LEAD_COLUMNS)
-      .or("strikes.gt.0,removed_from_community_at.not.is.null")
+      .or("strikes.gt.0,removed_from_community_at.not.is.null,flag_exempt.eq.true")
       .order("strikes", { ascending: false })
       .order("name")
       .limit(300),

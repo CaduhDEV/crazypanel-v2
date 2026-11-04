@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, ExternalLink, Flag, FlagOff, Loader2, MessageSquareWarning, Search, ShieldAlert, StickyNote, UserX } from "lucide-react";
+import { BadgeCheck, Bot, ExternalLink, Flag, FlagOff, Loader2, MessageSquareWarning, Search, ShieldAlert, StickyNote, UserX } from "lucide-react";
 import { toast } from "sonner";
-import { addFlag, addModerationNote, listLeadFlags, removeFlag, removeFromCommunity, type LeadFlag } from "@/lib/moderation/actions";
+import { addFlag, addModerationNote, listLeadFlags, removeFlag, removeFromCommunity, setFlagExempt, type LeadFlag } from "@/lib/moderation/actions";
 import type { PrivateResult } from "@/lib/community/core";
 import { cn, contactLabel, formatDayLabel, formatPhone, formatRelative, formatTime } from "@/lib/utils";
 import type { ContactKind } from "@/lib/types";
@@ -27,6 +27,8 @@ export interface ModerationLead {
   strikes: number;
   removed_from_community_at: string | null;
   left_community_at: string | null;
+  flag_exempt: boolean;
+  flag_exempt_note: string | null;
   company: { name: string } | null;
 }
 
@@ -141,6 +143,7 @@ export function ModerationView({
                         <Button size="sm" variant="outline" onClick={() => setAction({ kind: "warn", lead: l })}>
                           <MessageSquareWarning /> Advertir
                         </Button>
+                        <ExemptButton lead={l} onDone={() => router.refresh()} />
                         {flaggedIds.has(l.id) && <Badge variant="outline">já na lista</Badge>}
                       </span>
                     </li>
@@ -208,6 +211,7 @@ export function ModerationView({
                                 <FlagOff />
                               </Button>
                             </Tip>
+                            <ExemptButton lead={l} onDone={() => router.refresh()} />
                             <Tip label="Anotação no histórico">
                               <Button size="icon-sm" variant="outline" onClick={() => setAction({ kind: "note", lead: l })} aria-label="Anotação">
                                 <StickyNote />
@@ -288,6 +292,11 @@ function LeadCell({ lead, limit, byAi, onOpen }: { lead: ModerationLead; limit: 
           </button>
           {inapto && <Badge variant="destructive">Inapto</Badge>}
           {byAi && <AiBadge />}
+          {lead.flag_exempt && (
+            <Badge variant="success" title={lead.flag_exempt_note ?? undefined}>
+              Divulgador autorizado
+            </Badge>
+          )}
         </span>
         <span className="truncate text-xs text-muted-foreground">
           {[formatPhone(lead.phone), lead.company?.name].filter(Boolean).join(" · ") || "Sem telefone"}
@@ -309,6 +318,31 @@ export function FlagMeter({ strikes, limit }: { strikes: number; limit: number }
         {strikes}/{limit}
       </span>
     </span>
+  );
+}
+
+/** Liga ou desliga a autorização de divulgar (quem tem não recebe flag). */
+function ExemptButton({ lead, onDone }: { lead: ModerationLead; onDone: () => void }) {
+  const [pending, start] = useTransition();
+  const toggle = () =>
+    start(async () => {
+      let note: string | undefined;
+      if (!lead.flag_exempt) {
+        const answer = window.prompt(`Autorizar ${contactLabel(lead)} a divulgar? Ele deixa de receber flags. Motivo (opcional):`, "");
+        if (answer === null) return;
+        note = answer;
+      }
+      const res = await setFlagExempt({ contactId: lead.id, exempt: !lead.flag_exempt, note });
+      if (!res.ok) return void toast.error(res.error);
+      toast.success(lead.flag_exempt ? "Autorização retirada." : "Divulgador autorizado: não recebe mais flags.");
+      onDone();
+    });
+  return (
+    <Tip label={lead.flag_exempt ? "Tirar autorização de divulgar" : "Autorizar a divulgar (não recebe flag)"}>
+      <Button size="icon-sm" variant={lead.flag_exempt ? "default" : "outline"} onClick={toggle} disabled={pending} aria-label="Divulgador autorizado">
+        {pending ? <Loader2 className="animate-spin" /> : <BadgeCheck />}
+      </Button>
+    </Tip>
   );
 }
 
