@@ -50,7 +50,7 @@ export function ChatPanel({
   onNavigate: (ticketId: string) => void;
   onFinished: () => void;
 }) {
-  const { memberById, profile, taxonomy, isAdmin } = useApp();
+  const { memberById, profile, taxonomy } = useApp();
   const { viewersByTicket, setViewingTicket } = usePresence();
   const { data: ticket, isLoading: ticketLoading } = useTicket(ticketId);
   const { data: thread, isLoading: threadLoading } = useThread(ticketId);
@@ -194,7 +194,7 @@ export function ChatPanel({
               </Tip>
             )}
             <AssigneeMenu ticketId={ticket.id} assigneeId={ticket.assignee_id} disabled={closed} />
-            {isAdmin && !closed && <AiTestButton ticketId={ticket.id} onSent={() => setAiSentAt(Date.now())} />}
+            {!closed && <AiTestButton ticketId={ticket.id} onSent={() => setAiSentAt(Date.now())} />}
             <Tip label={panelOpen ? "Ocultar dados do lead" : "Mostrar dados do lead"}>
               <Button variant="ghost" size="icon-sm" onClick={() => onPanelOpenChange(!panelOpen)} className="hidden xl:inline-flex" aria-label="Dados do lead">
                 {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}

@@ -12,11 +12,11 @@ import { Tip } from "@/components/ui/misc";
 import { useApp } from "@/components/app/app-context";
 import type { ThreadTicket } from "@/components/conversation/use-thread";
 
-/** Botão de teste (admin): manda só este atendimento para o agente. Nunca encerra. */
+/** Botão para atendentes e admins: manda só este atendimento para o agente. Nunca encerra. */
 export function AiTestButton({ ticketId, onSent }: { ticketId: string; onSent: () => void }) {
   const [pending, start] = useTransition();
   return (
-    <Tip label="Classificar com IA (teste): manda só este atendimento e mostra a resposta aqui, sem encerrar">
+    <Tip label="Classificar com IA: mostra a sugestão aqui na conversa, sem encerrar">
       <Button
         variant="ghost"
         size="icon-sm"
