@@ -410,7 +410,8 @@ const closeSchema = z
     category: taxonomyKey("Escolha a categoria do atendimento."),
     topic: taxonomyKey("Escolha a subcategoria do atendimento."),
     resolvedBy: z.enum(resolvedByValues).optional(),
-    resolutionMessageId: id.optional(),
+    /** Mensagens que resolveram (pode ser mais de uma: cada autor ganha o resolvido). */
+    resolutionMessageIds: z.array(id).max(10).optional(),
     note: z.string().trim().max(2000).optional(),
   })
   .refine((d) => d.reason !== "resolved" || !!d.resolvedBy, {
@@ -419,7 +420,7 @@ const closeSchema = z
   });
 
 export async function closeTicket(input: z.input<typeof closeSchema>): Promise<ActionResult<void>> {
-  return runAction(closeSchema, input, async ({ ticketId, reason, category, topic, resolvedBy, resolutionMessageId, note }) => {
+  return runAction(closeSchema, input, async ({ ticketId, reason, category, topic, resolvedBy, resolutionMessageIds, note }) => {
     const [profile, ticket, taxonomy] = await Promise.all([requireMember(), loadTicket(ticketId), getTaxonomy()]);
     if (ticket.status === "closed") throw new ActionError("Este atendimento já foi finalizado.");
     if (!isActivePair(taxonomy, category, topic)) {
@@ -439,7 +440,8 @@ export async function closeTicket(input: z.input<typeof closeSchema>): Promise<A
         category,
         topic,
         resolved_by: reason === "resolved" ? (resolvedBy ?? null) : null,
-        resolution_message_id: reason === "resolved" ? (resolutionMessageId ?? null) : null,
+        // A primeira vira resolution_message_id (gatilho no banco mantém as duas iguais).
+        resolution_message_ids: reason === "resolved" ? [...new Set(resolutionMessageIds ?? [])] : [],
         close_note: note || null,
         waiting_since: null,
         assignee_id: ticket.assignee_id ?? profile.id,

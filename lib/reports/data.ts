@@ -89,7 +89,8 @@ export interface LiveReport {
   hoje: { hora: number; threads: number; mensagens: number }[];
   fila: { abertas: number; aguardando: number; sem_responsavel: number; estouradas: number; espera_max_min: number | null };
   top_comunidade: { id: string; nome: string | null; avatar_url: string | null; empresa: string | null; tipo: string; threads: number; respostas: number; resolvidas: number }[];
-  top_equipe: { id: string; nome: string; avatar_url: string | null; assumidas: number; resolvidas: number; respondidas: number; dentro_sla: number; mediana_min: number | null }[];
+  /** Quem está no top 10 por atendimentos, mensagens ou resolvidos (a tela escolhe a ordem). */
+  top_equipe: { id: string; nome: string; avatar_url: string | null; assumidas: number; mensagens?: number; resolvidas: number; respondidas: number; dentro_sla: number; mediana_min: number | null }[];
   /** Top 5 da comunidade em cada grupo com respostas no período (sem o de parceiros). */
   ranking_grupos?: { jid: string; nome: string | null; top: LiveReport["top_comunidade"] }[];
   resolucao: { comunidade: number; equipe: number; ambos: number; sem_resposta: number };

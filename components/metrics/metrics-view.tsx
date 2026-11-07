@@ -253,6 +253,7 @@ function CommunityPage({ data }: { data: MetricsPayload }) {
   const pi = indicators(p);
   const k = data.report.concentracao;
   const mv = data.report.movimento;
+  const [communityRank, setCommunityRank] = useState<RankKey>("atendimentos");
   const active = data.report.grupos.reduce((a, g) => a + g.ativos, 0);
   const members = data.report.grupos.reduce((a, g) => a + g.membros, 0);
   return (
@@ -268,16 +269,21 @@ function CommunityPage({ data }: { data: MetricsPayload }) {
         ]}
       />
       <Grid>
-        <Card title="Top 5 da comunidade" description="Quem mais respondeu dúvidas de outras pessoas." className="lg:col-span-5">
+        <Card
+          title="Top 5 da comunidade"
+          description="Quem mais ajudou outras pessoas."
+          className="lg:col-span-5"
+          action={<RankBy value={communityRank} onChange={setCommunityRank} labels={{ atendimentos: "Threads", mensagens: "Mensagens", resolucoes: "Resoluções" }} />}
+        >
           <People
-            rows={data.live.top_comunidade.map((a) => ({
+            rows={rankTop(data.live.top_comunidade, communityRank, (a) => ({ atendimentos: a.threads, mensagens: a.respostas, resolucoes: a.resolvidas })).map(({ row: a, value }) => ({
               id: a.id,
               name: a.nome ?? "Sem nome",
               avatar: a.avatar_url,
               sub: [a.empresa, a.tipo === "partner" ? "parceiro" : null].filter(Boolean).join(" · ") || "membro",
-              value: a.threads,
-              valueLabel: a.threads === 1 ? "thread" : "threads",
-              extra: `${fInt(a.respostas)} respostas · ${fInt(a.resolvidas)} resolvidas`,
+              value,
+              valueLabel: communityRank === "mensagens" ? (value === 1 ? "mensagem" : "mensagens") : communityRank === "resolucoes" ? (value === 1 ? "resolvida" : "resolvidas") : value === 1 ? "thread" : "threads",
+              extra: `${fInt(a.threads)} threads · ${fInt(a.respostas)} respostas · ${fInt(a.resolvidas)} resolvidas`,
             }))}
             empty="Ninguém respondeu dúvidas de outras pessoas no período."
           />
@@ -296,7 +302,8 @@ function TeamPage({ data }: { data: MetricsPayload }) {
   const i = indicators(s);
   const pi = indicators(p);
   const f = data.live.fila;
-  const team = data.live.top_equipe;
+  const [teamRank, setTeamRank] = useState<RankKey>("atendimentos");
+  const team = rankTop(data.live.top_equipe, teamRank, (t) => ({ atendimentos: t.assumidas, mensagens: t.mensagens ?? 0, resolucoes: t.resolvidas }));
   return (
     <>
       <Kpis
@@ -310,16 +317,21 @@ function TeamPage({ data }: { data: MetricsPayload }) {
         ]}
       />
       <Grid>
-        <Card title="Top 5 da equipe" description="Atendimentos assumidos ou respondidos, pelo painel ou por número vinculado." className="lg:col-span-5">
+        <Card
+          title="Top 5 da equipe"
+          description="Pelo painel ou por número vinculado."
+          className="lg:col-span-5"
+          action={<RankBy value={teamRank} onChange={setTeamRank} labels={{ atendimentos: "Atendimentos", mensagens: "Mensagens", resolucoes: "Resolvidos" }} />}
+        >
           <People
-            rows={team.map((t) => ({
+            rows={team.map(({ row: t, value }) => ({
               id: t.id,
               name: t.nome,
               avatar: t.avatar_url,
               sub: `1ª resposta ${fMin(t.mediana_min)} · ${fPct(pct(t.dentro_sla, t.respondidas))} no SLA`,
-              value: t.assumidas,
-              valueLabel: t.assumidas === 1 ? "atendimento" : "atendimentos",
-              extra: `${fInt(t.resolvidas)} resolvidos`,
+              value,
+              valueLabel: teamRank === "mensagens" ? (value === 1 ? "mensagem" : "mensagens") : teamRank === "resolucoes" ? (value === 1 ? "resolvido" : "resolvidos") : value === 1 ? "atendimento" : "atendimentos",
+              extra: `${fInt(t.assumidas)} atendimentos · ${fInt(t.mensagens ?? 0)} mensagens · ${fInt(t.resolvidas)} resolvidos`,
             }))}
             empty="Nenhum atendimento assumido no período."
           />
@@ -360,6 +372,37 @@ function TopicsPage({ data }: { data: MetricsPayload }) {
 }
 
 // --- blocos --------------------------------------------------------------------
+
+type RankKey = "atendimentos" | "mensagens" | "resolucoes";
+
+/** Os 5 primeiros pela medida escolhida (o banco manda quem está no top 10 de qualquer uma). */
+function rankTop<T>(rows: T[], by: RankKey, values: (row: T) => Record<RankKey, number>) {
+  return rows
+    .map((row) => ({ row, v: values(row) }))
+    .filter((x) => by !== "resolucoes" || x.v.resolucoes > 0)
+    .sort((a, b) => b.v[by] - a.v[by] || b.v.atendimentos - a.v.atendimentos)
+    .slice(0, 5)
+    .map((x) => ({ row: x.row, value: x.v[by] }));
+}
+
+function RankBy({ value, onChange, labels }: { value: RankKey; onChange: (v: RankKey) => void; labels: Record<RankKey, string> }) {
+  return (
+    <div className="flex rounded-md border border-border p-0.5" role="tablist" aria-label="Ordenar ranking por">
+      {(Object.keys(labels) as RankKey[]).map((k) => (
+        <button
+          key={k}
+          type="button"
+          role="tab"
+          aria-selected={value === k}
+          onClick={() => onChange(k)}
+          className={cn("rounded px-2 py-0.5 text-[11.5px]", value === k ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent")}
+        >
+          {labels[k]}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 type Kpi = {
   label: string;

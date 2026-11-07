@@ -9,6 +9,7 @@ import { contactLabel, formatRelative } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { messageSnippet } from "@/components/conversation/message-utils";
+import { MessageMedia } from "@/components/conversation/message-media";
 import { suggestionsKey, useContextSuggestions, type ContextSuggestion } from "@/components/conversation/use-thread";
 
 /**
@@ -41,7 +42,7 @@ function SuggestionRow({ ticketId, suggestion: s }: { ticketId: string; suggesti
   const queryClient = useQueryClient();
   const [pending, start] = useTransition();
   const name = contactLabel(s.contact);
-  const text = s.message ? messageSnippet({ body: s.message.body, kind: s.message.kind, media_name: null }) : "Mensagem";
+  const text = s.message ? messageSnippet(s.message) : "Mensagem";
 
   const refresh = () =>
     Promise.all([
@@ -66,7 +67,7 @@ function SuggestionRow({ ticketId, suggestion: s }: { ticketId: string; suggesti
     });
 
   return (
-    <div className="flex items-center gap-2.5 rounded-md border border-border bg-card px-2.5 py-2">
+    <div className="flex items-start gap-2.5 rounded-md border border-border bg-card px-2.5 py-2">
       <Avatar name={name} src={s.contact?.avatar_url} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="flex items-baseline gap-1.5 text-[12.5px]">
@@ -75,7 +76,14 @@ function SuggestionRow({ ticketId, suggestion: s }: { ticketId: string; suggesti
           <span className="shrink-0 text-[11px] text-muted-foreground">· {formatRelative(s.message?.sent_at ?? s.created_at)}</span>
           {s.reason === "member_reply" && <span className="shrink-0 rounded bg-primary-soft px-1.5 text-[10.5px] font-medium text-primary">resposta sem citação</span>}
         </span>
-        <span className="line-clamp-1 text-[12.5px] text-muted-foreground">{text}</span>
+        {s.message && s.message.kind !== "text" ? (
+          <div className="flex flex-col gap-1 pt-1">
+            <MessageMedia message={s.message} />
+            {s.message.body && <span className="line-clamp-2 text-[12.5px] text-muted-foreground">{s.message.body}</span>}
+          </div>
+        ) : (
+          <span className="line-clamp-2 text-[12.5px] text-muted-foreground">{text}</span>
+        )}
       </div>
       <Button size="sm" onClick={accept} disabled={pending} title={s.reason === "member_reply" ? "É uma resposta a esta dúvida: traz a pessoa e a mensagem para este atendimento (conta como ajuda da comunidade)" : "Trazer este lead e as mensagens dele para este atendimento"}>
         {pending ? <Loader2 className="animate-spin" /> : <UserPlus />} Adicionar ao atendimento
