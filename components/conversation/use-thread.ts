@@ -155,7 +155,8 @@ export interface ContextSuggestion {
   /** during_service: mensagem durante o atendimento; member_reply: provável resposta de outro membro a esta dúvida. */
   reason?: "during_service" | "member_reply";
   contact: { id: string; name: string | null; phone: string | null; lid: string | null; kind: Contact["kind"]; avatar_url: string | null; company: { name: string } | null } | null;
-  message: { body: string | null; kind: Message["kind"]; sent_at: string } | null;
+  /** A mensagem inteira: a sugestão mostra a mídia (áudio, imagem…) para decidir. */
+  message: Message | null;
 }
 
 /** Mensagens de outros leads sugeridas como contexto deste atendimento (pendentes). */
@@ -165,7 +166,7 @@ export function useContextSuggestions(id: string) {
     queryFn: async (): Promise<ContextSuggestion[]> => {
       const { data, error } = await createClient()
         .from("ticket_context_suggestions")
-        .select("*, contact:contacts(id, name, phone, lid, kind, avatar_url, company:companies(name)), message:messages(body, kind, sent_at)")
+        .select("*, contact:contacts(id, name, phone, lid, kind, avatar_url, company:companies(name)), message:messages(*)")
         .eq("ticket_id", id)
         .eq("status", "pending")
         .order("created_at", { ascending: true });

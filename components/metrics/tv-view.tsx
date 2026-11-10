@@ -242,7 +242,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
               <PodiumView
                 title="Destaques da Equipe"
                 subtitle="geral: atendimentos assumidos ou respondidos e velocidade de resposta"
-                items={data.live.top_equipe.map((t) => ({
+                items={data.live.top_equipe.slice(0, 5).map((t) => ({
                   id: t.id,
                   name: t.nome,
                   avatar: t.avatar_url,
@@ -386,7 +386,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
           <section className="grid min-h-0 flex-1 grid-cols-12 gap-[1vw]">
             <Panel title="Top 5 da comunidade" subtitle="quem mais ajudou outros membros" className="col-span-4">
               <Ranking
-                rows={data.live.top_comunidade.map((a) => ({
+                rows={data.live.top_comunidade.slice(0, 5).map((a) => ({
                   id: a.id,
                   name: a.nome ?? "Sem nome",
                   avatar: a.avatar_url,
@@ -410,7 +410,7 @@ export function TvView({ initial }: { initial: MetricsPayload }) {
 
             <Panel title="Top 5 da equipe" subtitle="atendimentos assumidos" className="col-span-4">
               <Ranking
-                rows={data.live.top_equipe.map((t) => ({
+                rows={data.live.top_equipe.slice(0, 5).map((t) => ({
                   id: t.id,
                   name: t.nome,
                   avatar: t.avatar_url,

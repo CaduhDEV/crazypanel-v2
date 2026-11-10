@@ -78,7 +78,8 @@ export function FinishDialog({
   const [category, setCategory] = useState<TicketCategory | null>(null);
   const [topic, setTopic] = useState<TicketTopic | null>(null);
   const [resolvedBy, setResolvedBy] = useState<ResolvedBy | null>(null);
-  const [resolution, setResolution] = useState<string | null>(null);
+  // Mensagens que resolveram: pode marcar mais de uma (cada autor ganha o resolvido).
+  const [resolution, setResolution] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const queryClient = useQueryClient();
   const { taxonomy, isAdmin } = useApp();
@@ -94,7 +95,7 @@ export function FinishDialog({
       setCategory((c) => c ?? ai.category);
       setTopic((t) => t ?? ai.topic);
       if (mode === "resolved" && ai.resolvedBy) setResolvedBy((r) => r ?? ai.resolvedBy);
-      if (mode === "resolved" && ai.resolutionMessageId) setResolution((m) => m ?? ai.resolutionMessageId ?? null);
+      if (mode === "resolved" && ai.resolutionMessageId) setResolution((m) => (m.length ? m : [ai.resolutionMessageId!]));
     } else if (mode === "parallel" && isActivePair(taxonomy, "comunidade", "offtopic")) {
       setCategory((c) => c ?? "comunidade");
       setTopic((t) => t ?? "offtopic");
@@ -103,8 +104,10 @@ export function FinishDialog({
 
   const { data: replies, isLoading: loadingReplies } = useReplies(ticketId, ownerId, resolved);
   // Sugestão de quem resolveu, pelo que aconteceu no atendimento (o atendente pode trocar).
-  const community = replies?.some((r) => !isTeam(r)) ?? false;
-  const team = replies?.some(isTeam) ?? false;
+  // Com mensagens marcadas, quem escreveu essas mensagens; senão, quem respondeu.
+  const basis = resolution.length ? (replies ?? []).filter((r) => resolution.includes(r.id)) : replies;
+  const community = basis?.some((r) => !isTeam(r)) ?? false;
+  const team = basis?.some(isTeam) ?? false;
   const suggested: ResolvedBy | null = community && team ? "both" : community ? "community" : team ? "team" : null;
   const by = resolvedBy ?? suggested;
 
@@ -112,7 +115,7 @@ export function FinishDialog({
     setCategory(null);
     setTopic(null);
     setResolvedBy(null);
-    setResolution(null);
+    setResolution([]);
     setNote("");
   };
 
@@ -126,7 +129,7 @@ export function FinishDialog({
       category,
       topic,
       resolvedBy: resolved ? (by ?? undefined) : undefined,
-      resolutionMessageId: resolved ? (resolution ?? undefined) : undefined,
+      resolutionMessageIds: resolved && resolution.length ? resolution : undefined,
       note: note || undefined,
     };
     const restore = dropOpenTicket(queryClient, ticketId);
@@ -212,7 +215,11 @@ export function FinishDialog({
           <fieldset className="flex flex-col gap-2.5">
             <legend className="mb-2.5 text-[13px] font-medium">
               Quem resolveu{" "}
-              {suggested && resolvedBy === null && <span className="font-normal text-muted-foreground">(sugerido pelas respostas do atendimento)</span>}
+              {suggested && resolvedBy === null && (
+                <span className="font-normal text-muted-foreground">
+                  ({resolution.length ? "sugerido pelas mensagens marcadas" : "sugerido pelas respostas do atendimento"})
+                </span>
+              )}
             </legend>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {RESOLVED_BY.map((o) => (
@@ -237,7 +244,10 @@ export function FinishDialog({
         {resolved && (
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-[13px] font-medium">
-              Mensagem que resolveu <span className="font-normal text-muted-foreground">(opcional)</span>
+              Mensagens que resolveram{" "}
+              <span className="font-normal text-muted-foreground">
+                (opcional; marque mais de uma se várias pessoas ajudaram: cada uma ganha o resolvido{resolution.length ? ` · ${resolution.length} marcada${resolution.length > 1 ? "s" : ""}` : ""})
+              </span>
             </legend>
             {loadingReplies ? (
               <Skeleton className="h-20" />
@@ -246,13 +256,13 @@ export function FinishDialog({
             ) : (
               <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-1">
                 {replies.slice(0, 15).map((r) => {
-                  const on = resolution === r.id;
+                  const on = resolution.includes(r.id);
                   const who = isTeam(r) ? (r.author?.name ?? r.contact?.name ?? r.sender_name ?? "Equipe") : (r.contact?.name ?? r.sender_name ?? "Membro");
                   return (
                     <li key={r.id}>
                       <button
                         type="button"
-                        onClick={() => setResolution(on ? null : r.id)}
+                        onClick={() => setResolution((list) => (on ? list.filter((x) => x !== r.id) : [...list, r.id]))}
                         aria-pressed={on}
                         className={cn(
                           "flex w-full flex-col gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
