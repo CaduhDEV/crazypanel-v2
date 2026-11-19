@@ -29,6 +29,8 @@ export interface MessageFilters {
   topic: string;
   kind: string;
   group: string;
+  /** Só elogios/agradecimentos (palavras-chave ou subcategoria elogio; ver public.is_praise). */
+  praise: boolean;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -47,6 +49,7 @@ export function parseMessageFilters(p: Record<string, string | undefined | null>
     topic,
     kind: MESSAGE_KINDS.some((k) => k.value === p.tipo) ? p.tipo! : "",
     group: p.grupo?.endsWith("@g.us") ? p.grupo : "",
+    praise: p.elogios === "1",
   };
 }
 
@@ -80,6 +83,8 @@ export async function fetchMessages(supabase: Supabase, f: MessageFilters, range
   else if (f.kind) query = query.eq("kind", f.kind).eq("is_note", false);
   if (f.category) query = query.eq("category", f.category);
   if (f.topic) query = query.eq("topic", f.topic);
+  // Campo calculado no banco (public.is_praise): mesma regra do praise_messages.
+  if (f.praise) query = query.eq("is_praise", true);
 
   if (f.q) {
     const term = f.q.replace(/[%,()*]/g, " ").trim();
