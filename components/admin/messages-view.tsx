@@ -9,6 +9,7 @@ import {
   Contact as ContactIcon,
   ExternalLink,
   FileText,
+  Heart,
   Image as ImageIcon,
   Loader2,
   MapPin,
@@ -153,7 +154,7 @@ export function MessagesView({
   }, [search]);
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters = !!(filters.q || filters.period !== "30" || filters.group || filters.kind || filters.category);
+  const hasFilters = !!(filters.q || filters.period !== "30" || filters.group || filters.kind || filters.category || filters.praise);
   const topics = filters.category ? taxonomy.topics.filter((t) => t.category === filters.category) : [];
 
   return (
@@ -257,6 +258,15 @@ export function MessagesView({
               </SelectContent>
             </Select>
           )}
+          <Button
+            variant={filters.praise ? "default" : "outline"}
+            size="sm"
+            aria-pressed={filters.praise}
+            onClick={() => update({ elogios: filters.praise ? null : "1" })}
+            title="Agradecimentos e elogios: obrigado, muito obrigado, agradecer, sensacional, perfeito, ótimo (ou subcategoria elogio)"
+          >
+            <Heart className={cn(filters.praise && "fill-current")} /> Elogios
+          </Button>
           {hasFilters && (
             <Button
               variant="ghost"
