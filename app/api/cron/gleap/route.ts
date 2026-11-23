@@ -5,8 +5,8 @@ import { syncRecentGleapLeads } from "@/lib/gleap-sync";
 
 export const maxDuration = 60;
 
-// Rotina diária: puxa as sessões mais recentes do Gleap. Chamada pelo Vercel
-// Cron (vercel.json), que envia "Authorization: Bearer <CRON_SECRET>".
+// Rotina diária: puxa as sessões mais recentes do Gleap. Chamada pelo
+// pg_cron do Supabase com "Authorization: Bearer <CRON_SECRET>".
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization") ?? "";

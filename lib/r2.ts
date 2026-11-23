@@ -28,7 +28,7 @@ const objectUrl = (base: string, key: string) => `${base}/${key.split("/").map(e
 
 export async function r2Put(key: string, body: ArrayBuffer | Uint8Array | Buffer, contentType: string): Promise<void> {
   const { client, base } = config();
-  // O R2 exige Content-Length; na Vercel um Buffer pode sair sem ele (411).
+  // O R2 exige Content-Length; em produção um Buffer pode sair sem ele (411).
   const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
   const res = await client.fetch(objectUrl(base, key), {
     method: "PUT",

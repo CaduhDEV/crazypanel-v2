@@ -4,8 +4,6 @@ Painel de atendimento das comunidades da DataCrazy no WhatsApp.
 
 Cada pergunta feita num grupo vira um atendimento numa fila com SLA. A equipe responde pelo painel, finaliza com categoria e as métricas saem disso. O painel também cuida da entrada de novos membros, da moderação dos grupos e liga cada lead à empresa dele no CRM.
 
-- Produção: https://groups-umber.vercel.app
-- Homologação: https://crazypanel.vercel.app
 
 ## Créditos
 
@@ -93,7 +91,7 @@ Cada pergunta feita num grupo vira um atendimento numa fila com SLA. A equipe re
 | Integrações | CRM DataCrazy, Gleap, agentes de IA do CRM |
 | Validação | Zod |
 | PDF | jsPDF |
-| Hospedagem | Vercel, região São Paulo (`gru1`) |
+| Hospedagem | Node.js 22 (`next build` e `next start`) |
 
 ## Rodando local
 
@@ -167,30 +165,39 @@ O agente interno da equipe consulta o Cérebro por `/api/cerebro/busca` e `/api/
 
 ## Deploy
 
-A produção sai do repositório `leuhsouza/crazypanel-v2`: cada merge na `main` publica sozinho. As variáveis ficam no projeto da Vercel, em Settings › Environment Variables. Variáveis `NEXT_PUBLIC_*` só valem depois de um novo deploy.
+A produção sai do repositório `leuhsouza/crazypanel-v2`. Qualquer hospedagem com Node.js 22 serve:
 
-O `vercel.json` fixa as funções em São Paulo (`gru1`), perto do banco, e agenda a rotina diária do Gleap.
+```bash
+npm ci
+npm run build
+npm start            # porta 3000 (ou PORT)
+```
+
+- As variáveis de ambiente ficam no servidor. As `NEXT_PUBLIC_*` entram no build, então mudar alguma pede um build novo.
+- Hospede perto do banco (São Paulo) para as telas responderem rápido.
+- Webhooks e rotinas precisam de um endereço HTTPS público, o mesmo de `NEXT_PUBLIC_SITE_URL`.
+- Ao trocar o endereço do painel, atualize `NEXT_PUBLIC_SITE_URL`, o segredo `crazypanel_url` no Vault e o webhook da uazapi (Administração › Conexões).
 
 ## Rotinas automáticas
 
-O plano gratuito da Vercel só roda cron uma vez por dia, então as rotinas frequentes rodam no `pg_cron` do Supabase.
+Todas as rotinas rodam no `pg_cron` do Supabase, que chama as rotas do painel.
 
-| Rotina | Frequência | Onde |
-| --- | --- | --- |
-| Leads do Gleap (`/api/cron/gleap`) | todo dia, 9h UTC | Vercel Cron |
-| Pedidos de entrada (`/api/cron/join-requests`) | 5 min | pg_cron |
-| Chamados do Gleap (`/api/cron/gleap-tickets`) | 10 min | pg_cron |
-| Relatório (`/api/cron/report`) | 1 h | pg_cron |
-| Classificação por IA (`/api/cron/ai-classify`) | 30 min | pg_cron |
-| Fim do Limpar fila (`/api/cron/ai-classify?so=limpeza`) | 5 min | pg_cron |
-| Moderação por IA, reenvio (`/api/cron/ai-moderate`) | 10 min | pg_cron |
-| Cérebro, retomada (`/api/cron/brain`) | 15 min | pg_cron |
-| Mídias com falha (`/api/cron/media-retry`) | 5 min | pg_cron |
+| Rotina | Frequência |
+| --- | --- |
+| Leads do Gleap (`/api/cron/gleap`) | todo dia, 9h UTC |
+| Pedidos de entrada (`/api/cron/join-requests`) | 5 min |
+| Chamados do Gleap (`/api/cron/gleap-tickets`) | 10 min |
+| Relatório (`/api/cron/report`) | 1 h |
+| Classificação por IA (`/api/cron/ai-classify`) | 30 min |
+| Fim do Limpar fila (`/api/cron/ai-classify?so=limpeza`) | 5 min |
+| Moderação por IA, reenvio (`/api/cron/ai-moderate`) | 10 min |
+| Cérebro, retomada (`/api/cron/brain`) | 15 min |
+| Mídias com falha (`/api/cron/media-retry`) | 5 min |
 
 O pg_cron chama as rotas com `Authorization: Bearer <CRON_SECRET>`. O endereço e o segredo ficam no Vault, com o mesmo valor de `CRON_SECRET`:
 
 ```sql
-select vault.create_secret('https://groups-umber.vercel.app', 'crazypanel_url');
+select vault.create_secret('https://endereco-do-painel', 'crazypanel_url');
 select vault.create_secret('<CRON_SECRET>', 'crazypanel_cron_secret');
 ```
 
