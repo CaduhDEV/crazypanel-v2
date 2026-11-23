@@ -6,7 +6,7 @@ import { syncGleapTickets } from "@/lib/gleap-sync";
 export const maxDuration = 60;
 
 // Rotina frequente: renova a cópia local dos chamados ativos do Gleap.
-// Vercel Cron envia "Authorization: Bearer <CRON_SECRET>".
+// O pg_cron do Supabase chama com "Authorization: Bearer <CRON_SECRET>".
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization") ?? "";

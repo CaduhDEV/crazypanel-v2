@@ -5,7 +5,7 @@ import { syncWhatsAppJoinRequests } from "@/lib/community/sync";
 export const maxDuration = 60;
 
 // Rotina frequente: lê os pedidos de entrada feitos pelo WhatsApp nos grupos da
-// comunidade. Vercel Cron envia "Authorization: Bearer <CRON_SECRET>".
+// comunidade. O pg_cron do Supabase chama com "Authorization: Bearer <CRON_SECRET>".
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization") ?? "";

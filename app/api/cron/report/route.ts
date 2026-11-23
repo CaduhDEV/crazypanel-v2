@@ -5,7 +5,7 @@ import { issueScheduledReport } from "@/lib/reports/issue";
 export const maxDuration = 120;
 
 // De hora em hora: emite e envia o relatório oficial no dia e hora configurados.
-// Vercel Cron envia "Authorization: Bearer <CRON_SECRET>".
+// O pg_cron do Supabase chama com "Authorization: Bearer <CRON_SECRET>".
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization") ?? "";

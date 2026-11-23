@@ -23,13 +23,12 @@ npm-debug.log*
 
 # vercel
 .vercel
+.vercelignore
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# ferramentas locais
-.claude
 
 # supabase cli (projeto vinculado, endereço do banco)
 supabase/.temp
@@ -40,6 +39,14 @@ supabase/.temp
 # temporários locais
 /.tmp/
 
-# Instruções locais de agentes (Claude Code / next dev); não vão para o GitHub
+# ferramentas e editores locais
+.claude/
+.cursor/
+.windsurf/
+.codeium/
+.continue/
+.aider*
+.idea/
 /AGENTS.md
 /CLAUDE.md
+/GEMINI.md
